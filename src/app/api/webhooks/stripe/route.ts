@@ -77,7 +77,9 @@ export async function POST(request: Request) {
       });
 
       // Notificar no Telegram
-      if (ev?.providers?.telegram_chat_id) {
+      const providerData = ev?.providers as any;
+
+      if (providerData?.telegram_chat_id && ev) {
         const spotsRemaining = Math.max(0, ev.max_spots - (ev.booked_spots + 1));
         const dateFormatted = new Date(ev.start_time).toLocaleString("pt-PT", {
           weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
@@ -92,7 +94,7 @@ export async function POST(request: Request) {
           `🎟️ *Vagas restantes:* ${spotsRemaining} de ${ev.max_spots}\n\n` +
           `_Vaga confirmada._`;
 
-        await sendTelegramNotification(ev.providers.telegram_chat_id, message);
+        await sendTelegramNotification(providerData.telegram_chat_id, message);
       }
     }
 

@@ -42,7 +42,9 @@ export async function POST(request: Request) {
       .eq("id", userId)
       .single();
 
-    if (eventData?.providers?.telegram_chat_id) {
+    const providerData = eventData?.providers as any;
+
+    if (providerData?.telegram_chat_id && eventData) {
       const spotsRemaining = eventData.max_spots - eventData.booked_spots;
       const dateFormatted = new Date(eventData.start_time).toLocaleString("pt-PT", {
         weekday: "short",
@@ -62,7 +64,7 @@ export async function POST(request: Request) {
         `🎟️ *Vagas restantes:* ${spotsRemaining} de ${eventData.max_spots}\n\n` +
         `_Reserva confirmada via Ericeira Pass (créditos)._`;
 
-      await sendTelegramNotification(eventData.providers.telegram_chat_id, message);
+      await sendTelegramNotification(providerData.telegram_chat_id, message);
     }
 
     return NextResponse.json({ success: true, result: data });

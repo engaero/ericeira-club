@@ -99,19 +99,23 @@ export async function POST(request: Request) {
       ? ["card", "paypal"] 
       : ["card", "mb_way", "paypal"];
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: paymentMethodTypes as any,
+	const sessionParams: any = {
+      payment_method_types: paymentMethodTypes,
       line_items: lineItems,
       mode,
       customer_email: userEmail,
       metadata,
-      subscription_data: mode === "subscription" ? { metadata } : undefined,
       success_url: `${origin}/?payment=success`,
       cancel_url: `${origin}/?payment=cancelled`,
-    });
+    };
 
-    return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+    if (mode === "subscription") {
+      sessionParams.subscription_data = { metadata };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionParams);
+
+    return NextResponse.json({ url: session.url });  } catch (error: any) {
     console.error("Erro ao criar checkout Stripe:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
