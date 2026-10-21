@@ -78,13 +78,13 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
               <div className="relative">
                 <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
                 <input
-                  type="email"
-                  required
-                  placeholder="o-teu-email@exemplo.pt"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-600"
-                />
+				  type="email"
+				  required
+				  value={email}
+				  onChange={(e) => setEmail(e.target.value)}
+				  placeholder="o-teu-email@exemplo.com"
+				  className="w-full px-4 py-3 rounded-xl border border-stone-300 bg-white text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition"
+				/>
               </div>
             </div>
 
