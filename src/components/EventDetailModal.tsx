@@ -23,15 +23,16 @@ function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
 }
 
 const CATEGORY_IMAGES: Record<string, string> = {
-  surf: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=1200&q=80",
   wellness: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80",
+  surf: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=1200&q=80",
   breathwork: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&q=80",
+  yoga: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1200&q=80",
   crafts: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=1200&q=80",
+  ceramics: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=1200&q=80",
   wine: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80",
   coffee: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
-  yoga: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1200&q=80",
-  skate: "https://images.unsplash.com/photo-1564982752979-3f7bc974d29a?auto=format&fit=crop&w=1200&q=80",
   ple: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
+  social: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=80"
 };
 
 export default function EventDetailModal({
@@ -72,10 +73,11 @@ export default function EventDetailModal({
 
   const titleDisplay = lang === "pt" ? (event.title_pt || event.title_en) : (event.title_en || event.title_pt);
   const descDisplay = lang === "pt"
-    ? (event.description_pt || event.description_en || "Sessão orientada na Ericeira.")
+    ? (event.description_pt || event.description_en || "Experiência orientada na Ericeira.")
     : (event.description_en || event.description_pt || "Guided session in Ericeira.");
 
   const coverImage = CATEGORY_IMAGES[event.category] || CATEGORY_IMAGES.wellness;
+  const isCreditsAllowed = (event.pricing_model ?? "credits_allowed") === "credits_allowed";
   const creditsNeeded = event.credits_cost || Math.round(event.price_eur / 5);
 
   const provider = event.providers;
@@ -92,7 +94,7 @@ export default function EventDetailModal({
         onClick={(e) => e.stopPropagation()}
         className="bg-white rounded-[32px] max-w-2xl w-full shadow-2xl relative border border-stone-200 overflow-hidden my-auto"
       >
-        {/* BOTÃO FECHAR PERFEITAMENTE VISÍVEL DENTRO DA ÁREA SEGURA */}
+        {/* BOTÃO FECHAR */}
         <button
           onClick={onClose}
           aria-label="Fechar janela"
@@ -101,7 +103,7 @@ export default function EventDetailModal({
           <X className="w-5 h-5 stroke-[2.5]" />
         </button>
 
-        {/* CABEÇALHO COM IMAGEM */}
+        {/* CABEÇALHO */}
         <div className="relative h-60 sm:h-64 w-full bg-stone-900">
           <img
             src={coverImage}
@@ -117,6 +119,11 @@ export default function EventDetailModal({
             <span className="px-3 py-1 rounded-full text-xs font-bold bg-black/60 text-stone-200 backdrop-blur-md">
               {event.level || "Todos os níveis"}
             </span>
+            {!isCreditsAllowed && (
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/90 text-stone-950 backdrop-blur-md">
+                Workshop Especial
+              </span>
+            )}
           </div>
 
           <div className="absolute bottom-4 left-6 right-6 text-white space-y-1">
@@ -131,7 +138,7 @@ export default function EventDetailModal({
 
         {/* CORPO DO MODAL */}
         <div className="p-6 sm:p-8 space-y-6 max-h-[calc(85vh-240px)] overflow-y-auto">
-          {/* Informações rápidas em grelha */}
+          {/* Métricas */}
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-[#FAF8F5] rounded-2xl border border-stone-200/70 text-xs">
             <div>
               <span className="text-stone-400 block font-semibold uppercase text-[10px]">Vagas</span>
@@ -150,15 +157,15 @@ export default function EventDetailModal({
             </div>
 
             <div className="col-span-2 sm:col-span-1">
-              <span className="text-stone-400 block font-semibold uppercase text-[10px]">Nível</span>
+              <span className="text-stone-400 block font-semibold uppercase text-[10px]">Formato</span>
               <p className="font-extrabold text-stone-900 text-sm mt-0.5 flex items-center gap-1">
                 <Sparkles className="w-4 h-4 text-amber-500" />
-                {event.level || "Aberto"}
+                {isCreditsAllowed ? "Aula Regular" : "Bilhete Direto"}
               </p>
             </div>
           </div>
 
-          {/* Descrição detalhada da sessão */}
+          {/* Descrição */}
           <div className="space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-stone-400">
               {lang === "pt" ? "Sobre esta sessão" : "About this session"}
@@ -180,7 +187,7 @@ export default function EventDetailModal({
             </div>
           )}
 
-          {/* CARTÃO COMPLETO DO INSTRUTOR COM BIO & FOTO */}
+          {/* Instrutor / Anfitrião */}
           <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
@@ -217,13 +224,13 @@ export default function EventDetailModal({
                   {provider?.name}
                 </h5>
                 <p className="text-xs text-stone-600 leading-relaxed">
-                  {hostBio || (lang === "pt" ? "Profissional verificado na Ericeira." : "Verified local professional in Ericeira.")}
+                  {hostBio || (lang === "pt" ? "Profissional local verificado na Ericeira." : "Verified local host in Ericeira.")}
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Ponto de encontro & Maps */}
+          {/* Ponto de encontro */}
           <div className="space-y-1 pt-1 border-t border-stone-100">
             <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
               {lang === "pt" ? "Ponto de Encontro" : "Meeting Point"}
@@ -255,12 +262,16 @@ export default function EventDetailModal({
             <div>
               <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-stone-900">{event.price_eur}€</span>
-                <span className="text-xs text-stone-400 font-medium">
-                  {lang === "pt" ? "ou" : "or"} <strong className="text-stone-900">{creditsNeeded} {lang === "pt" ? "créditos" : "credits"}</strong>
-                </span>
+                {isCreditsAllowed && (
+                  <span className="text-xs text-stone-400 font-medium">
+                    {lang === "pt" ? "ou" : "or"} <strong className="text-stone-900">{creditsNeeded} {lang === "pt" ? "créditos" : "credits"}</strong>
+                  </span>
+                )}
               </div>
               <span className="text-[10px] text-stone-400 block pt-0.5">
-                Cancelamento gratuito até 12 horas antes
+                {isCreditsAllowed
+                  ? (lang === "pt" ? "Cancelamento gratuito até 12 horas antes" : "Free cancellation up to 12h prior")
+                  : (lang === "pt" ? "Bilhete individual (MB WAY, Cartão ou PayPal)" : "Direct ticket (MB WAY, Card or PayPal)")}
               </span>
             </div>
 
@@ -271,22 +282,28 @@ export default function EventDetailModal({
                   onBuySingleTicket(event);
                   onClose();
                 }}
-                className="flex-1 sm:flex-none px-4 py-3 rounded-full bg-white border border-stone-300 hover:border-stone-900 text-stone-800 text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40"
+                className={`flex-1 sm:flex-none px-5 py-3 rounded-full text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 ${
+                  !isCreditsAllowed
+                    ? "bg-stone-900 hover:bg-orange-600 text-white shadow-md font-black uppercase tracking-wider"
+                    : "bg-white border border-stone-300 hover:border-stone-900 text-stone-800"
+                }`}
               >
                 <CreditCard className="w-3.5 h-3.5" />
                 {lang === "pt" ? `Pagar ${event.price_eur}€` : `Pay ${event.price_eur}€`}
               </button>
 
-              <button
-                disabled={isSoldOut}
-                onClick={() => {
-                  onBookWithCredits(event);
-                  onClose();
-                }}
-                className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-stone-900 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md disabled:bg-stone-200 disabled:text-stone-400"
-              >
-                {isSoldOut ? "Esgotado" : (lang === "pt" ? `Usar ${creditsNeeded} Créd.` : `Use ${creditsNeeded} Cred.`)}
-              </button>
+              {isCreditsAllowed && (
+                <button
+                  disabled={isSoldOut}
+                  onClick={() => {
+                    onBookWithCredits(event);
+                    onClose();
+                  }}
+                  className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-stone-900 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md disabled:bg-stone-200 disabled:text-stone-400"
+                >
+                  {isSoldOut ? "Esgotado" : (lang === "pt" ? `Usar ${creditsNeeded} Créd.` : `Use ${creditsNeeded} Cred.`)}
+                </button>
+              )}
             </div>
           </div>
         </div>

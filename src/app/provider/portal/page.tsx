@@ -1,569 +1,658 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import CreateEventModal from "@/components/CreateEventModal";
-import { 
-  ArrowLeft, PlusCircle, Calendar, MapPin, 
-  Users, AlertCircle, Clock, Banknote, Save, CheckCircle2, User 
+import { useLanguage } from "@/context/LanguageContext";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Users,
+  PlusCircle,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle2,
+  Trash2,
+  Euro,
+  Sparkles,
 } from "lucide-react";
 
-function InstagramIcon({ className = "w-4 h-4" }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
-    </svg>
-  );
-}
-
 export default function ProviderPortalPage() {
-  const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [provider, setProvider] = useState<any>(null);
-  const [events, setEvents] = useState<any[]>([]);
-  const [payouts, setPayouts] = useState<any[]>([]);
+  const { lang } = useLanguage();
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [provider, setProvider] = useState<any | null>(null);
+  const [events, setEvents] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
-  // Estados de perfil público
-  const [name, setName] = useState("");
-  const [bioPt, setBioPt] = useState("");
-  const [bioEn, setBioEn] = useState("");
-  const [instagramHandle, setInstagramHandle] = useState("");
-  const [avatarUrl, setAvatarUrl] = useState("");
-  const [profileSavedMsg, setProfileSavedMsg] = useState("");
-  const [savingProfile, setSavingProfile] = useState(false);
-
-  // Estados de dados bancários e fiscais
-  const [iban, setIban] = useState("");
-  const [bankAccountHolder, setBankAccountHolder] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [taxName, setTaxName] = useState("");
-  const [bankSavedMsg, setBankSavedMsg] = useState("");
-  const [savingBank, setSavingBank] = useState(false);
+  // Campos do formulário de nova sessão
+  const [titlePt, setTitlePt] = useState("");
+  const [titleEn, setTitleEn] = useState("");
+  const [category, setCategory] = useState("wellness");
+  const [pricingModel, setPricingModel] = useState<"credits_allowed" | "direct_only">("credits_allowed");
+  const [priceEur, setPriceEur] = useState<number>(20);
+  const [creditsCost, setCreditsCost] = useState<number>(4);
+  const [maxSpots, setMaxSpots] = useState<number>(10);
+  const [durationMinutes, setDurationMinutes] = useState<number>(60);
+  const [startTime, setStartTime] = useState("");
+  const [locationName, setLocationName] = useState("Ericeira");
+  const [whatToBring, setWhatToBring] = useState("");
+  const [descPt, setDescPt] = useState("");
+  const [descEn, setDescEn] = useState("");
 
   useEffect(() => {
     loadProviderData();
   }, []);
 
   async function loadProviderData() {
-    setLoading(true);
-    const { data: { session } } = await supabase.auth.getSession();
+    try {
+      setLoading(true);
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    if (!session?.user) {
-      router.push("/");
+      if (!session?.user) {
+        setLoading(false);
+        return;
+      }
+
+      // 1. Procurar perfil de anfitrião/prestador associado ao user
+      const { data: prov, error: provError } = await supabase
+        .from("providers")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .maybeSingle();
+
+      if (provError) throw provError;
+
+      if (prov) {
+        setProvider(prov);
+
+        // 2. Procurar sessões do prestador
+        const { data: evList, error: evError } = await supabase
+          .from("events")
+          .select("*")
+          .eq("provider_id", prov.id)
+          .order("start_time", { ascending: true });
+
+        if (evError) throw evError;
+        setEvents(evList || []);
+
+        // 3. Procurar histórico de reservas
+        const eventIds = (evList || []).map((e) => e.id);
+        if (eventIds.length > 0) {
+          const { data: bookList, error: bookError } = await supabase
+            .from("bookings")
+            .select("*, events(title_pt, title_en, price_eur)")
+            .in("event_id", eventIds)
+            .order("created_at", { ascending: false });
+
+          if (bookError) throw bookError;
+          setBookings(bookList || []);
+        }
+      }
+    } catch (err: any) {
+      console.error("Erro ao carregar dados do portal:", err.message);
+      setFeedback({ type: "error", message: err.message });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Auto-calcular créditos recomendados ao mudar o preço em Euros
+  function handlePriceChange(value: number) {
+    setPriceEur(value);
+    setCreditsCost(Math.max(1, Math.round(value / 5)));
+  }
+
+  // Criar nova sessão/workshop
+  async function handleCreateEvent(e: React.FormEvent) {
+    e.preventDefault();
+    if (!provider) return;
+
+    if (!titlePt && !titleEn) {
+      setFeedback({
+        type: "error",
+        message: lang === "pt" ? "Preenche pelo menos um título para a sessão." : "Please provide a title.",
+      });
       return;
     }
 
-    setCurrentUser(session.user);
-
-    const { data: provData } = await supabase
-      .from("providers")
-      .select("*")
-      .eq("user_id", session.user.id)
-      .maybeSingle();
-
-    if (provData) {
-      setProvider(provData);
-      setName(provData.name || "");
-      setBioPt(provData.bio_pt || "");
-      setBioEn(provData.bio_en || "");
-      setInstagramHandle(provData.instagram_handle || "");
-      setAvatarUrl(provData.avatar_url || "");
-      setIban(provData.iban || "");
-      setBankAccountHolder(provData.bank_account_holder || "");
-      setTaxId(provData.tax_id || "");
-      setTaxName(provData.tax_name || "");
-
-      if (provData.verified) {
-        const { data: evData } = await supabase
-          .from("events")
-          .select(`
-            *,
-            bookings (
-              id,
-              status,
-              payment_method,
-              amount_paid_eur,
-              commission_eur,
-              created_at,
-              profiles ( full_name, email, phone )
-            )
-          `)
-          .eq("provider_id", provData.id)
-          .order("start_time", { ascending: true });
-
-        if (evData) setEvents(evData);
-
-        const { data: payoutsData } = await supabase
-          .from("provider_payouts")
-          .select("*")
-          .eq("provider_id", provData.id)
-          .order("created_at", { ascending: false });
-
-        if (payoutsData) setPayouts(payoutsData);
-      }
+    if (!startTime) {
+      setFeedback({
+        type: "error",
+        message: lang === "pt" ? "Indica o dia e hora de início." : "Please indicate the date and time.",
+      });
+      return;
     }
 
-    setLoading(false);
-  }
-
-  async function handleSaveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingProfile(true);
-    setProfileSavedMsg("");
-
     try {
-      const res = await fetch("/api/provider/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerId: provider.id,
-          name,
-          bioPt,
-          bioEn,
-          instagramHandle,
-          avatarUrl,
-        }),
+      setCreating(true);
+
+      const payload = {
+        provider_id: provider.id,
+        title_pt: titlePt || titleEn,
+        title_en: titleEn || titlePt,
+        category,
+        pricing_model: pricingModel,
+        price_eur: priceEur,
+        credits_cost: pricingModel === "direct_only" ? null : creditsCost,
+        max_spots: maxSpots,
+        duration_minutes: durationMinutes,
+        start_time: new Date(startTime).toISOString(),
+        location_name: locationName,
+        what_to_bring: whatToBring,
+        description_pt: descPt,
+        description_en: descEn,
+      };
+
+      const { data, error } = await supabase.from("events").insert([payload]).select().single();
+      if (error) throw error;
+
+      setFeedback({
+        type: "success",
+        message: lang === "pt" ? "Sessão agendada com sucesso no Ericeira Hub!" : "Session successfully published!",
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      // Limpar formulário
+      setTitlePt("");
+      setTitleEn("");
+      setStartTime("");
+      setWhatToBring("");
+      setDescPt("");
+      setDescEn("");
 
-      setProfileSavedMsg("Perfil público atualizado com sucesso!");
+      // Recarregar lista
+      setEvents((prev) => [...prev, data]);
     } catch (err: any) {
-      alert(err.message || "Erro ao guardar perfil.");
+      setFeedback({ type: "error", message: err.message });
     } finally {
-      setSavingProfile(false);
+      setCreating(false);
     }
   }
 
-  async function handleSaveBankDetails(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingBank(true);
-    setBankSavedMsg("");
+  // Cancelar/remover sessão
+  async function handleDeleteEvent(eventId: string) {
+    const confirmDelete = window.confirm(
+      lang === "pt"
+        ? "Tens a certeza que queres cancelar esta sessão?"
+        : "Are you sure you want to delete this session?"
+    );
+    if (!confirmDelete) return;
 
     try {
-      const res = await fetch("/api/provider/bank-details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          providerId: provider.id,
-          iban,
-          bankAccountHolder,
-          taxId,
-          taxName,
-        }),
+      const { error } = await supabase.from("events").delete().eq("id", eventId);
+      if (error) throw error;
+
+      setEvents((prev) => prev.filter((e) => e.id !== eventId));
+      setFeedback({
+        type: "success",
+        message: lang === "pt" ? "Sessão eliminada com sucesso." : "Session removed.",
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      setBankSavedMsg("Dados fiscais e bancários guardados com sucesso!");
     } catch (err: any) {
-      alert(err.message || "Erro ao gravar dados.");
-    } finally {
-      setSavingBank(false);
+      setFeedback({ type: "error", message: err.message });
     }
   }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-stone-50 flex items-center justify-center text-stone-500 font-sans">
-        A carregar portal do instrutor...
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 text-stone-500 font-sans text-xs font-bold uppercase tracking-wider">
+        {lang === "pt" ? "A verificar credenciais de anfitrião..." : "Verifying host credentials..."}
       </div>
     );
   }
 
   if (!provider) {
     return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="bg-white p-8 rounded-3xl border border-stone-200 shadow-sm max-w-md space-y-4">
-          <AlertCircle className="w-12 h-12 text-stone-400 mx-auto" />
-          <h2 className="text-xl font-bold">Ainda não és Instrutor / Parceiro</h2>
-          <p className="text-sm text-stone-600">
-            A tua conta ({currentUser?.email}) é de membro comum. Se és instrutor ou freelancer local na Ericeira, envia a tua candidatura para começar.
+      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-stone-200 text-center space-y-4 shadow-sm">
+          <AlertCircle className="w-10 h-10 text-orange-600 mx-auto" />
+          <h2 className="text-xl font-black text-stone-900">
+            {lang === "pt" ? "Área de Anfitrião & Parceiro" : "Host & Partner Portal"}
+          </h2>
+          <p className="text-xs text-stone-600 leading-relaxed">
+            {lang === "pt"
+              ? "A tua conta ainda não está associada a um perfil de instrutor, artesão ou estúdio no Ericeira Hub."
+              : "Your account is not registered as a host, artisan or studio partner yet."}
           </p>
-          <button
-            onClick={() => router.push("/become-a-partner")}
-            className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-orange-600 transition cursor-pointer"
+          <a
+            href="mailto:suporte@ericeirahub.pt"
+            className="inline-block px-5 py-2.5 rounded-full bg-stone-900 text-white text-xs font-bold hover:bg-orange-600 transition"
           >
-            Submeter Candidatura de Parceiro
-          </button>
+            {lang === "pt" ? "Pedir Credenciais de Parceiro" : "Request Partner Access"}
+          </a>
         </div>
       </div>
     );
   }
 
-  if (!provider.verified) {
-    return (
-      <div className="min-h-screen bg-stone-50 flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="bg-white p-8 rounded-3xl border border-amber-200 shadow-sm max-w-md space-y-4">
-          <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
-            <Clock className="w-6 h-6" />
-          </div>
-          <h2 className="text-xl font-bold">Candidatura em Revisão</h2>
-          <p className="text-sm text-stone-600">
-            Olá, <strong>{provider.name}</strong>! A tua candidatura foi recebida e está sob validação pela administração do Ericeira Hub.
-          </p>
-          <button
-            onClick={() => router.push("/")}
-            className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-sm font-semibold hover:bg-stone-800 transition cursor-pointer"
-          >
-            Voltar ao Hub
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Cálculos de saldo acumulado
+  const totalBookings = bookings.length;
+  const creditsReceived = bookings.filter((b) => b.payment_method === "credits").length * 4; // 4€ líquidos por crédito
+  const directEurosReceived = bookings
+    .filter((b) => b.payment_method === "stripe_direct")
+    .reduce((acc, curr) => acc + (curr.amount_paid_eur - (curr.commission_eur || 0)), 0);
 
-  let totalNetPayable = 0;
-  let confirmedBookingsCount = 0;
-  const ratePerCredit = parseFloat(provider.payout_payout_rate_eur || 4.00);
-
-  events.forEach((ev) => {
-    const activeBookings = ev.bookings?.filter((b: any) => b.status === "confirmed") || [];
-    confirmedBookingsCount += activeBookings.length;
-    const eventCredits = ev.credits_cost || Math.round(ev.price_eur / 5);
-
-    activeBookings.forEach(() => {
-      totalNetPayable += (eventCredits * ratePerCredit);
-    });
-  });
-
-  const totalAlreadyPaid = payouts.reduce((acc, curr) => acc + parseFloat(curr.amount_eur || 0), 0);
-  const currentBalancePending = Math.max(0, totalNetPayable - totalAlreadyPaid);
+  const totalPayoutEst = creditsReceived + directEurosReceived;
 
   return (
-    <div className="min-h-screen bg-[#FAF8F5] text-stone-900 font-sans pb-20">
-      <CreateEventModal
-        isOpen={isModalOpen}
-        providerId={provider.id}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={loadProviderData}
-      />
-
-      {/* HEADER */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-stone-200/80 sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <button
-            onClick={() => router.push("/")}
-            className="flex items-center gap-2 text-sm font-semibold text-stone-600 hover:text-stone-900 cursor-pointer"
+    <div className="min-h-screen bg-[#FDFBF7] text-stone-900 font-sans selection:bg-orange-100 selection:text-orange-900 pb-24">
+      {/* MENSAGEM FEEDBACK */}
+      {feedback && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+          <div
+            className={`p-4 rounded-2xl shadow-xl flex items-center justify-between border backdrop-blur-md ${
+              feedback.type === "success"
+                ? "bg-emerald-900/90 text-white border-emerald-700"
+                : "bg-red-900/90 text-white border-red-700"
+            }`}
           >
-            <ArrowLeft className="w-4 h-4" /> Voltar ao Hub
-          </button>
-          <div className="flex items-center gap-2">
-            {provider.avatar_url && (
-              <img src={provider.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-200" />
+            <p className="text-xs font-semibold">{feedback.message}</p>
+            <button
+              onClick={() => setFeedback(null)}
+              className="text-white/70 hover:text-white text-xs font-bold underline ml-4 cursor-pointer"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CABEÇALHO DO PORTAL */}
+      <section className="pt-12 pb-8 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200/80 pb-6">
+          <div className="flex items-center gap-4">
+            {provider.avatar_url ? (
+              <img
+                src={provider.avatar_url}
+                alt={provider.name}
+                className="w-14 h-14 rounded-full object-cover border border-stone-300 shadow-xs"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-stone-900 text-white font-black text-lg flex items-center justify-center">
+                {provider.name?.charAt(0)}
+              </div>
             )}
-            <span className="text-xs bg-stone-100 text-stone-800 px-3 py-1 rounded-full font-bold">
-              {provider.name}
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 pt-10 space-y-10">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight">Painel do Instrutor</h1>
-            <p className="text-stone-500 text-sm">Gere o teu perfil público, sessões agendadas e recebimentos.</p>
-          </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 rounded-full bg-stone-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-orange-600 transition cursor-pointer shadow-xs self-start sm:self-auto"
-          >
-            <PlusCircle className="w-4 h-4" /> Publicar Nova Sessão
-          </button>
-        </div>
-
-        {/* CARTÕES DE RESUMO FINANCEIRO (80% LÍQUIDO) */}
-        <div className="grid sm:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-3xl border border-stone-200/80 shadow-xs space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-              Saldo Pendente a Transferir
-            </span>
-            <p className="text-3xl font-black text-teal-800">{currentBalancePending.toFixed(2)}€</p>
-            <span className="text-[11px] text-stone-400 block pt-1">
-              80% líquido calculado automaticamente
-            </span>
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl border border-stone-200/80 shadow-xs space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-              Total Já Liquidado
-            </span>
-            <p className="text-3xl font-black text-stone-900">{totalAlreadyPaid.toFixed(2)}€</p>
-            <span className="text-[11px] text-stone-400 block pt-1">
-              Transferências concluídas pela administração
-            </span>
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl border border-stone-200/80 shadow-xs space-y-1">
-            <span className="text-xs font-semibold uppercase tracking-wider text-stone-400">
-              Presenças Confirmadas
-            </span>
-            <p className="text-3xl font-black text-stone-900">{confirmedBookingsCount}</p>
-            <span className="text-[11px] text-stone-400 block pt-1">
-              Alunos inscritos nas tuas aulas
-            </span>
-          </div>
-        </div>
-
-        {/* FORMULÁRIO DE PERFIL PÚBLICO & BIOGRAFIA */}
-        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-stone-200/80 shadow-xs space-y-6">
-          <div className="flex items-center justify-between border-b border-stone-100 pb-4">
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-orange-600" />
-              <h3 className="font-extrabold text-lg text-stone-900">O Teu Perfil Público & Biografia</h3>
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-orange-600 block">
+                {lang === "pt" ? "Portal do Anfitrião" : "Host Dashboard"}
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-black text-stone-900 leading-tight">
+                {provider.name}
+              </h1>
             </div>
-            <span className="text-xs text-stone-400">Visível no modal e cartões das aulas</span>
           </div>
 
-          {profileSavedMsg && (
-            <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" /> {profileSavedMsg}
-            </div>
-          )}
+          {/* TELEGRAM STATUS */}
+          <div className="flex items-center gap-2">
+            <span
+              className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border ${
+                provider.telegram_chat_id
+                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                  : "bg-amber-50 text-amber-800 border-amber-200"
+              }`}
+            >
+              {provider.telegram_chat_id ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  {lang === "pt" ? "Notificações Telegram Ativas" : "Telegram Alerts Active"}
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  {lang === "pt" ? "Telegram Desligado" : "Telegram Disconnected"}
+                </>
+              )}
+            </span>
+          </div>
+        </div>
 
-          <form onSubmit={handleSaveProfile} className="space-y-4 text-sm">
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                  Nome Profissional / Marca *
+        {/* MÉTRICAS / BALANÇO */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6">
+          <div className="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+              {lang === "pt" ? "Reservas Registadas" : "Total Bookings"}
+            </span>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-2xl font-black text-stone-900">{totalBookings}</span>
+              <Users className="w-5 h-5 text-stone-400" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+              {lang === "pt" ? "Sessões Ativas" : "Active Sessions"}
+            </span>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-2xl font-black text-stone-900">{events.length}</span>
+              <Calendar className="w-5 h-5 text-orange-600" />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl p-5 border border-stone-200/80 shadow-xs">
+            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider block">
+              {lang === "pt" ? "Valor Líquido Acumulado" : "Estimated Payout"}
+            </span>
+            <div className="flex items-center justify-between mt-1">
+              <span className="text-2xl font-black text-emerald-700">{totalPayoutEst.toFixed(2)}€</span>
+              <Euro className="w-5 h-5 text-emerald-600" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CONTEÚDO PRINCIPAL: CRIAR SESSÃO & LISTAGEM */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4">
+        {/* FORMULÁRIO DE NOVA SESSÃO (5 COLUNAS) */}
+        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/90 shadow-sm space-y-5">
+          <div className="space-y-1">
+            <h2 className="text-lg font-black text-stone-900 flex items-center gap-2">
+              <PlusCircle className="w-5 h-5 text-orange-600" />
+              {lang === "pt" ? "Publicar Nova Sessão / Workshop" : "Publish Session or Workshop"}
+            </h2>
+            <p className="text-xs text-stone-500">
+              {lang === "pt"
+                ? "Configura o horário, a tipologia de produto e o modelo de pagamento."
+                : "Set schedule, product category and pricing structure."}
+            </p>
+          </div>
+
+          <form onSubmit={handleCreateEvent} className="space-y-4 text-xs font-semibold text-stone-700">
+            {/* Título PT */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Título (Português)" : "Title (Portuguese)"}</label>
+              <input
+                type="text"
+                placeholder="Ex: Cerâmica Manual - Introdução à Roda"
+                value={titlePt}
+                onChange={(e) => setTitlePt(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+              />
+            </div>
+
+            {/* Título EN */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Título (Inglês)" : "Title (English)"}</label>
+              <input
+                type="text"
+                placeholder="Ex: Wheel Throwing Pottery Workshop"
+                value={titleEn}
+                onChange={(e) => setTitleEn(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+              />
+            </div>
+
+            {/* Categoria */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Categoria / Eixo Temático" : "Category / Strategic Axis"}</label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white"
+              >
+                <optgroup label="Corpo & Mente">
+                  <option value="wellness">Wellness & Recuperação</option>
+                  <option value="yoga">Yoga & Práticas Somáticas</option>
+                  <option value="breathwork">Breathwork & Ice Bath</option>
+                  <option value="surf">Surf Conditioning & Treino</option>
+                </optgroup>
+                <optgroup label="Artes & Oficinas">
+                  <option value="crafts">Oficinas Manuais / Crafts</option>
+                  <option value="ceramics">Cerâmica</option>
+                </optgroup>
+                <optgroup label="Sabor & Tradição">
+                  <option value="wine">Vinho & Degustação</option>
+                  <option value="coffee">Café Especial / Cupping</option>
+                </optgroup>
+                <optgroup label="Línguas & Social">
+                  <option value="ple">Português Língua Estrangeira</option>
+                  <option value="social">Encontros Comunitários</option>
+                </optgroup>
+              </select>
+            </div>
+
+            {/* MODELO DE PAGAMENTO (REGULAR VS DIRECT ONLY) */}
+            <div className="space-y-1 p-3.5 bg-stone-50 rounded-2xl border border-stone-200/80">
+              <label className="text-stone-900 font-extrabold flex items-center justify-between">
+                <span>{lang === "pt" ? "Modelo de Pagamento" : "Billing Model"}</span>
+                {pricingModel === "direct_only" && (
+                  <span className="text-[10px] bg-amber-200 text-amber-950 px-2 py-0.5 rounded-full font-black uppercase">
+                    Workshop Especial
+                  </span>
+                )}
+              </label>
+
+              <select
+                value={pricingModel}
+                onChange={(e) => setPricingModel(e.target.value as any)}
+                className="w-full px-3 py-2 rounded-xl border border-stone-300 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white mt-1"
+              >
+                <option value="credits_allowed">
+                  Aula Regular (Permite Ericeira Pass ou Avulso)
+                </option>
+                <option value="direct_only">
+                  Workshop Especial (Apenas Pagamento Direto em €)
+                </option>
+              </select>
+
+              <p className="text-[11px] text-stone-500 font-normal leading-relaxed pt-1">
+                {pricingModel === "direct_only"
+                  ? "Recomendado para workshops de cerâmica, tours e tickets acima de 40€. Os utilizadores pagam em Euros e não esgotam a bolsa de créditos regulares."
+                  : "Os alunos podem usar créditos do passe (recebes 4,00€ por crédito consumido) ou comprar avulso."}
+              </p>
+            </div>
+
+            {/* PREÇO E CRÉDITOS */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label>{lang === "pt" ? "Preço de Balcão (€)" : "Ticket Price (€)"}</label>
+                <input
+                  type="number"
+                  min={5}
+                  max={500}
+                  value={priceEur}
+                  onChange={(e) => handlePriceChange(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label>
+                  {pricingModel === "direct_only" ? "Créditos (Desativado)" : "Custo em Créditos"}
                 </label>
                 <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none"
+                  type="number"
+                  disabled={pricingModel === "direct_only"}
+                  value={pricingModel === "direct_only" ? 0 : creditsCost}
+                  onChange={(e) => setCreditsCost(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs disabled:bg-stone-100 disabled:text-stone-400"
                 />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                  Instagram Handle (sem @)
-                </label>
-                <div className="relative">
-                  <InstagramIcon className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    placeholder="sofia.yoga.ericeira"
-                    value={instagramHandle}
-                    onChange={(e) => setInstagramHandle(e.target.value)}
-                    className="w-full pl-9 pr-3.5 py-2.5 text-xs border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                  />
-                </div>
               </div>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                URL da Foto de Perfil (Avatar)
-              </label>
+            {/* VAGAS E DURAÇÃO */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label>{lang === "pt" ? "Vagas Máximas" : "Max Spots"}</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={maxSpots}
+                  onChange={(e) => setMaxSpots(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label>{lang === "pt" ? "Duração (min)" : "Duration (min)"}</label>
+                <input
+                  type="number"
+                  step={15}
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* DATA E HORA DE INÍCIO */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Data e Hora de Início" : "Start Date & Time"}</label>
               <input
-                type="url"
-                placeholder="https://..."
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                className="w-full px-3.5 py-2.5 text-xs border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none"
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white"
               />
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                  Biografia Curta (Português)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ex: Instrutora certificada de Vinyasa e Breathwork na Ericeira há 6 anos..."
-                  value={bioPt}
-                  onChange={(e) => setBioPt(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none leading-relaxed"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                  Short Bio (English)
-                </label>
-                <textarea
-                  rows={3}
-                  placeholder="Ex: Certified Vinyasa & Breathwork teacher based in Ericeira for 6 years..."
-                  value={bioEn}
-                  onChange={(e) => setBioEn(e.target.value)}
-                  className="w-full px-3.5 py-2.5 text-xs border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none leading-relaxed"
-                />
-              </div>
+            {/* LOCALIZAÇÃO / MORADA */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Ponto de Encontro / Estúdio" : "Studio / Meeting Spot"}</label>
+              <input
+                type="text"
+                value={locationName}
+                onChange={(e) => setLocationName(e.target.value)}
+                placeholder="Ex: Rua do Limoeiro 12, Ericeira"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+              />
             </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                disabled={savingProfile}
-                className="flex items-center gap-1.5 px-5 py-2.5 bg-stone-900 text-white rounded-xl text-xs font-bold hover:bg-orange-600 disabled:opacity-50 transition cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {savingProfile ? "A gravar..." : "Atualizar Perfil Público"}
-              </button>
+            {/* O QUE LEVAR */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "O que levar / Requisitos" : "What to bring"}</label>
+              <input
+                type="text"
+                value={whatToBring}
+                onChange={(e) => setWhatToBring(e.target.value)}
+                placeholder="Ex: Roupa confortável que possa sujar, toalha..."
+                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
+              />
             </div>
+
+            {/* DESCRIÇÃO PT */}
+            <div className="space-y-1">
+              <label>{lang === "pt" ? "Descrição Resumida (PT)" : "Short Description (PT)"}</label>
+              <textarea
+                rows={2}
+                value={descPt}
+                onChange={(e) => setDescPt(e.target.value)}
+                placeholder="Explicita o foco da aula, material incluído e nível..."
+                className="w-full px-3.5 py-2 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs resize-none"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={creating}
+              className="w-full py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50"
+            >
+              {creating
+                ? (lang === "pt" ? "A agendar sessão..." : "Publishing...")
+                : (lang === "pt" ? "Publicar no Calendário do Hub" : "Publish to Hub Schedule")}
+            </button>
           </form>
-        </section>
+        </div>
 
-        {/* DADOS FISCAIS E BANCÁRIOS */}
-        <section className="bg-white p-6 sm:p-8 rounded-[28px] border border-stone-200/80 shadow-xs space-y-6">
-          <div className="flex items-center gap-2 border-b border-stone-100 pb-4">
-            <Banknote className="w-5 h-5 text-teal-700" />
-            <h3 className="font-extrabold text-lg text-stone-900">Dados para Pagamentos (Payouts)</h3>
+        {/* LISTAGEM DE SESSÕES ATIVAS & INSCRITOS (7 COLUNAS) */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-black text-stone-900">
+              {lang === "pt" ? "As Tuas Sessões Agendadas" : "Your Active Sessions"}
+            </h2>
+            <span className="text-xs font-bold text-stone-500">
+              {events.length} {lang === "pt" ? "sessões" : "sessions"}
+            </span>
           </div>
 
-          {bankSavedMsg && (
-            <div className="p-3 bg-emerald-50 text-emerald-800 text-xs rounded-xl border border-emerald-200 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 shrink-0" /> {bankSavedMsg}
-            </div>
-          )}
-
-          <form onSubmit={handleSaveBankDetails} className="grid sm:grid-cols-2 gap-4 text-sm">
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                Nome do Titular da Conta (IBAN) *
-              </label>
-              <input
-                type="text"
-                required
-                value={bankAccountHolder}
-                onChange={(e) => setBankAccountHolder(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                IBAN Português ou SEPA *
-              </label>
-              <input
-                type="text"
-                required
-                value={iban}
-                onChange={(e) => setIban(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none uppercase font-mono text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                Nome / Firma Associada ao NIF/NIPC *
-              </label>
-              <input
-                type="text"
-                required
-                value={taxName}
-                onChange={(e) => setTaxName(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none text-xs"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
-                NIF / NIPC (Para Emissão de Recibo/Fatura) *
-              </label>
-              <input
-                type="text"
-                required
-                value={taxId}
-                onChange={(e) => setTaxId(e.target.value)}
-                className="w-full px-3 py-2 border border-stone-300 rounded-xl focus:ring-2 focus:ring-stone-900 focus:outline-none text-xs"
-              />
-            </div>
-
-            <div className="sm:col-span-2 flex items-center justify-between pt-2 border-t border-stone-100">
-              <p className="text-[11px] text-stone-500">
-                Os fechos de contas são efetuados quinzenalmente mediante recibo verde ou fatura do prestador.
-              </p>
-              <button
-                type="submit"
-                disabled={savingBank}
-                className="flex items-center gap-1.5 px-4 py-2 bg-stone-900 text-white rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-50 transition cursor-pointer"
-              >
-                <Save className="w-3.5 h-3.5" />
-                {savingBank ? "A guardar..." : "Guardar Dados de Payout"}
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {/* LISTAGEM DE SESSÕES */}
-        <div className="space-y-6">
-          <h2 className="text-xl font-bold tracking-tight">As tuas Sessões Agendadas</h2>
-
           {events.length === 0 ? (
-            <div className="bg-white p-12 rounded-[28px] border border-stone-200/80 text-center text-stone-500 text-sm">
-              Ainda não tens nenhuma aula publicada. Clica em &quot;Publicar Nova Sessão&quot; para começar.
+            <div className="p-8 text-center bg-white rounded-3xl border border-stone-200/80 space-y-2">
+              <Calendar className="w-8 h-8 text-stone-400 mx-auto" />
+              <p className="text-xs font-bold text-stone-700">
+                {lang === "pt" ? "Ainda não publicaste nenhuma sessão." : "No published sessions yet."}
+              </p>
+              <p className="text-xs text-stone-500">
+                {lang === "pt"
+                  ? "Utiliza o formulário ao lado para abrir vagas para a comunidade."
+                  : "Use the form to schedule upcoming slots."}
+              </p>
             </div>
           ) : (
-            <div className="grid gap-6">
+            <div className="space-y-3">
               {events.map((ev) => {
-                const dateStr = new Date(ev.start_time).toLocaleString("pt-PT", {
-                  weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
-                });
+                const spotsLeft = ev.max_spots - ev.booked_spots;
+                const isSoldOut = spotsLeft <= 0;
+                const dateStr = new Date(ev.start_time).toLocaleDateString(
+                  lang === "pt" ? "pt-PT" : "en-US",
+                  { weekday: "short", day: "numeric", month: "short" }
+                );
+                const timeStr = new Date(ev.start_time).toLocaleTimeString(
+                  lang === "pt" ? "pt-PT" : "en-US",
+                  { hour: "2-digit", minute: "2-digit" }
+                );
 
-                const confirmedBookings = ev.bookings?.filter((b: any) => b.status === "confirmed") || [];
+                const isDirectOnly = ev.pricing_model === "direct_only";
 
                 return (
-                  <div key={ev.id} className="bg-white rounded-[28px] border border-stone-200/80 shadow-xs p-6 space-y-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-stone-100">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-stone-100 text-stone-800">
-                            {ev.category}
+                  <div
+                    key={ev.id}
+                    className="p-5 bg-white rounded-2xl border border-stone-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-800">
+                          {ev.category}
+                        </span>
+                        {isDirectOnly ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200 text-amber-950">
+                            Workshop Direto
                           </span>
-                          <span className="text-xs text-stone-500 font-medium">
-                            {ev.price_eur}€ / {ev.credits_cost} créditos
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-800">
+                            Passe ({ev.credits_cost || Math.round(ev.price_eur / 5)} cr.)
                           </span>
-                        </div>
-                        <h3 className="text-xl font-bold">{ev.title_en}</h3>
-                        <div className="flex flex-wrap gap-4 text-xs text-stone-600 pt-1">
-                          <span className="flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5 text-stone-400" /> {dateStr} ({ev.duration_minutes} min)
-                          </span>
-                          <span className="flex items-center gap-1.5">
-                            <MapPin className="w-3.5 h-3.5 text-orange-600" /> {ev.location_name}
-                          </span>
-                        </div>
+                        )}
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200 flex items-center gap-1.5">
-                          <Users className="w-4 h-4" /> {confirmedBookings.length} / {ev.max_spots} Inscritos
+                      <h3 className="font-extrabold text-stone-900 text-sm">
+                        {lang === "pt" ? ev.title_pt || ev.title_en : ev.title_en || ev.title_pt}
+                      </h3>
+
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-stone-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                          {dateStr} • {timeStr}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-orange-600" />
+                          {ev.location_name}
                         </span>
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                        Alunos Inscritos ({confirmedBookings.length})
-                      </h4>
+                    <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-3 sm:pt-0 border-stone-100">
+                      <div className="text-left sm:text-right">
+                        <span className="text-xs font-black text-stone-900 block">
+                          {ev.price_eur}€
+                        </span>
+                        <span
+                          className={`text-[11px] font-bold ${
+                            isSoldOut ? "text-red-600" : "text-stone-500"
+                          }`}
+                        >
+                          {ev.booked_spots} / {ev.max_spots} vagas
+                        </span>
+                      </div>
 
-                      {confirmedBookings.length === 0 ? (
-                        <p className="text-xs text-stone-400 italic">Nenhum aluno inscrito até ao momento.</p>
-                      ) : (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {confirmedBookings.map((b: any) => (
-                            <div key={b.id} className="p-3 bg-[#FAF8F5] rounded-xl border border-stone-200/80 text-xs space-y-1">
-                              <p className="font-bold text-stone-800">{b.profiles?.full_name || b.profiles?.email || "Aluno"}</p>
-                              <p className="text-stone-500">{b.profiles?.email}</p>
-                              <span className="inline-block text-[10px] font-semibold text-teal-800 uppercase">
-                                {b.payment_method === "ericeira_pass_credits" ? "Ericeira Pass" : "Cartão / MB"}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <button
+                        onClick={() => handleDeleteEvent(ev.id)}
+                        className="p-2 rounded-xl text-stone-400 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+                        title={lang === "pt" ? "Cancelar sessão" : "Delete session"}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -571,7 +660,7 @@ export default function ProviderPortalPage() {
             </div>
           )}
         </div>
-      </main>
+      </section>
     </div>
   );
 }
