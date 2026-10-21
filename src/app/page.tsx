@@ -12,9 +12,14 @@ import {
   Users,
   ArrowRight,
   Compass,
+  CheckCircle2,
+  ShieldCheck,
+  CreditCard,
+  Zap,
+  Ticket,
 } from "lucide-react";
 
-// 1. Abas de filtros organizadas pelos 4 eixos temáticos do Hub
+// Categorias organizadas pelos 4 eixos estratégicos do Hub
 const CATEGORY_TABS = [
   { id: "all", label_pt: "Todas as Experiências", label_en: "All Sessions" },
   { id: "corpo_mente", label_pt: "🧘 Corpo & Mente", label_en: "🧘 Body & Mind" },
@@ -30,7 +35,6 @@ const CATEGORY_MAPPING: Record<string, string[]> = {
   comunidade_linguas: ["ple", "social"],
 };
 
-// 2. Dicionário de tradução para os badges individuais de cada cartão
 const CATEGORY_LABELS_MAP: Record<string, { pt: string; en: string }> = {
   wellness: { pt: "Wellness & Gelo", en: "Wellness & Ice" },
   surf: { pt: "Treino Surf", en: "Surf Conditioning" },
@@ -118,14 +122,12 @@ export default function HomePage() {
     }
   }
 
-  // Filtragem pelos eixos temáticos
   const filteredEvents = events.filter((ev) => {
     if (selectedCategory === "all") return true;
     const allowed = CATEGORY_MAPPING[selectedCategory] || [];
     return allowed.includes(ev.category);
   });
 
-  // 1. Reserva com Créditos
   async function handleBookWithCredits(event: any) {
     if (!user) {
       setFeedback({
@@ -162,7 +164,6 @@ export default function HomePage() {
     }
   }
 
-  // 2. Compra Avulsa de Bilhete Direto (Stripe Checkout)
   async function handleBuySingleTicket(event: any) {
     if (!user) {
       setFeedback({
@@ -198,7 +199,6 @@ export default function HomePage() {
     }
   }
 
-  // 3. Aquisição de Pacote de Créditos (Ericeira Pass)
   async function handleBuyCreditPackage(packageId: string) {
     if (!user) {
       setFeedback({
@@ -234,7 +234,7 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-900 font-sans selection:bg-orange-100 selection:text-orange-900 pb-24">
-      {/* FEEDBACK TOAST / NOTIFICAÇÃO */}
+      {/* NOTIFICAÇÃO / TOAST */}
       {feedback && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
           <div
@@ -255,8 +255,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* HERO SECTION */}
-      <section className="relative pt-12 pb-14 px-4 sm:px-8 max-w-7xl mx-auto">
+      {/* 1. HERO SECTION */}
+      <section className="relative pt-12 pb-10 px-4 sm:px-8 max-w-7xl mx-auto">
         <div className="max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-100/70 border border-orange-200 text-orange-950 text-xs font-bold tracking-tight">
             <Compass className="w-3.5 h-3.5 text-orange-600" />
@@ -271,8 +271,8 @@ export default function HomePage() {
 
           <p className="text-base sm:text-lg text-stone-600 font-normal leading-relaxed max-w-2xl">
             {lang === "pt"
-              ? "Práticas de corpo & mente, artesanias manuais, experiências gastronómicas e eventos comunitários. Reserva sessões regulares com o teu passe ou participa diretamente em workshops especiais."
-              : "Body & mind practices, artisan workshops, gastronomic tours and community gatherings. Book regular sessions with your pass or join special workshops directly."}
+              ? "Práticas de corpo & mente, artesanias manuais, experiências gastronómicas e eventos comunitários. Um único passe para aceder aos melhores estúdios da vila ou reserva direta de workshops especiais."
+              : "Body & mind practices, artisan workshops, gastronomic tours and community gatherings. A single pass for the best local studios or direct bookings for special workshops."}
           </p>
 
           {profile && (
@@ -288,7 +288,153 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* BARRA DE FILTROS BILINGUE */}
+      {/* 2. SECÇÃO COMPLETA: O ERICEIRA PASS (PASSE MULTI-ESTÚDIO) */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-16">
+        <div className="bg-[#1C1917] text-white rounded-[36px] p-6 sm:p-12 border border-stone-800 shadow-2xl relative overflow-hidden">
+          {/* Fundo decorativo sutil */}
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-orange-600/15 rounded-full blur-3xl pointer-events-none" />
+
+          {/* Cabeçalho da secção */}
+          <div className="max-w-3xl space-y-3 relative z-10 mb-8 sm:mb-12">
+            <span className="px-3.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-600 text-white inline-flex items-center gap-1.5">
+              <Ticket className="w-3.5 h-3.5" />
+              {lang === "pt" ? "Passe Comunitário Multi-Estúdio" : "Multi-Studio Community Pass"}
+            </span>
+
+            <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
+              {lang === "pt"
+                ? "Um passe flexível. Todos os teus estúdios favoritos."
+                : "One flexible pass. All your favourite studios."}
+            </h2>
+
+            <p className="text-stone-400 text-sm sm:text-base leading-relaxed">
+              {lang === "pt"
+                ? "Esquece as mensalidades presas a um único espaço. Com o Ericeira Pass compras uma bolsa de créditos e fazes hoje yoga no SOL Studios, amanhã banho de gelo no The Organic Way e surf conditioning na Praia do Sul. Sem fidelizações."
+                : "No locked-in monthly fees. With Ericeira Pass, get credit packs and practice yoga at SOL Studios today, ice bath at The Organic Way tomorrow, and surf conditioning by Praia do Sul. Full freedom."}
+            </p>
+
+            {/* Como funciona resumido */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs text-stone-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
+                <span>{lang === "pt" ? "1 crédito ≈ 5€ de valor real" : "1 credit ≈ €5 real value"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
+                <span>{lang === "pt" ? "Reserva imediata em 1 clique" : "Instant 1-click booking"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
+                <span>{lang === "pt" ? "Cancelamento sem custos até 12h" : "Free cancel up to 12h before"}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Cartões dos 3 Pacotes */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
+            {/* PACOTE 12 */}
+            <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
+              <div className="space-y-3">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
+                  {lang === "pt" ? "Iniciação / Drop-in" : "Starter Pack"}
+                </span>
+                <h3 className="text-3xl font-black text-white">
+                  12 {lang === "pt" ? "Créditos" : "Credits"}
+                </h3>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Ideal para 3 a 4 aulas de Yoga, Breathwork, Sauna ou Treino Funcional."
+                    : "Great for 3 to 4 classes of Yoga, Breathwork, Sauna or Functional Training."}
+                </p>
+                <div className="pt-2">
+                  <span className="text-3xl font-black text-white">59€</span>
+                  <span className="text-xs text-stone-500 ml-1.5">(4,91€ / cr.)</span>
+                </div>
+              </div>
+
+              <button
+                disabled={actionLoading}
+                onClick={() => handleBuyCreditPackage("pack_12")}
+                className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                {lang === "pt" ? "Comprar 12 Créditos" : "Buy 12 Credits"}
+              </button>
+            </div>
+
+            {/* PACOTE 35 (DESTAQUE) */}
+            <div className="bg-gradient-to-b from-orange-600 to-orange-700 rounded-3xl p-6 sm:p-7 border-2 border-orange-400 flex flex-col justify-between space-y-6 relative shadow-2xl scale-[1.02]">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black uppercase tracking-wider text-orange-200">
+                    {lang === "pt" ? "Mais Popular" : "Most Popular"}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-white text-orange-700 text-[10px] font-black uppercase shadow-xs">
+                    {lang === "pt" ? "Melhor Relação" : "Best Value"}
+                  </span>
+                </div>
+                <h3 className="text-3xl font-black text-white">
+                  35 {lang === "pt" ? "Créditos" : "Credits"}
+                </h3>
+                <p className="text-xs text-orange-100 leading-relaxed">
+                  {lang === "pt"
+                    ? "O passe oficial para quem reside ou passa temporadas na Ericeira (8 a 10 aulas)."
+                    : "The go-to pass for regular community members and digital nomads (8 to 10 classes)."}
+                </p>
+                <div className="pt-2">
+                  <span className="text-3xl font-black text-white">165€</span>
+                  <span className="text-xs text-orange-200 ml-1.5">
+                    ({(165 / 35).toFixed(2)}€ / cr.)
+                  </span>
+                </div>
+              </div>
+
+              <button
+                disabled={actionLoading}
+                onClick={() => handleBuyCreditPackage("pack_35")}
+                className="w-full py-3.5 rounded-2xl bg-stone-950 hover:bg-black text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                {lang === "pt" ? "Adquirir Ericeira Pass" : "Get Ericeira Pass"}
+              </button>
+            </div>
+
+            {/* PACOTE 70 */}
+            <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
+              <div className="space-y-3">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
+                  {lang === "pt" ? "Comunidade & Família" : "Community & Family"}
+                </span>
+                <h3 className="text-3xl font-black text-white">
+                  70 {lang === "pt" ? "Créditos" : "Credits"}
+                </h3>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Para quem treina quase diariamente ou partilha o saldo no seio familiar/casal."
+                    : "For daily athletes or couples sharing one combined multi-studio balance."}
+                </p>
+                <div className="pt-2">
+                  <span className="text-3xl font-black text-white">315€</span>
+                  <span className="text-xs text-stone-500 ml-1.5">
+                    ({(315 / 70).toFixed(2)}€ / cr.)
+                  </span>
+                </div>
+              </div>
+
+              <button
+                disabled={actionLoading}
+                onClick={() => handleBuyCreditPackage("pack_70")}
+                className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                {lang === "pt" ? "Comprar 70 Créditos" : "Buy 70 Credits"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 3. BARRA DE FILTROS BILINGUE */}
       <section className="sticky top-20 z-20 bg-[#FDFBF7]/95 backdrop-blur-md border-y border-stone-200/60 py-3.5 px-4 sm:px-8 mb-8">
         <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto scrollbar-none">
           {CATEGORY_TABS.map((tab) => (
@@ -307,7 +453,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* GRELHA DE EXPERIÊNCIAS */}
+      {/* 4. GRELHA DE EXPERIÊNCIAS & SESSÕES */}
       <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-20">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-stone-900">
@@ -364,7 +510,7 @@ export default function HomePage() {
                   className="group bg-white rounded-3xl border border-stone-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition duration-200 overflow-hidden cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    {/* Capa */}
+                    {/* Imagem de Capa */}
                     <div className="relative h-48 w-full bg-stone-900 overflow-hidden">
                       <img
                         src={coverImg}
@@ -379,7 +525,7 @@ export default function HomePage() {
                         </span>
                         {!isCreditsAllowed && (
                           <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-xs">
-                            {lang === "pt" ? "Workshop Especial" : "Special Workshop"}
+                            {lang === "pt" ? "Workshop" : "Workshop"}
                           </span>
                         )}
                       </div>
@@ -392,7 +538,7 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* Informação */}
+                    {/* Conteúdo */}
                     <div className="p-5 space-y-3">
                       <h3 className="font-extrabold text-stone-900 text-base leading-snug group-hover:text-orange-600 transition">
                         {title}
@@ -464,116 +610,6 @@ export default function HomePage() {
             })}
           </div>
         )}
-      </section>
-
-      {/* ERICEIRA PASS - COMPRA DE CRÉDITOS */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-20">
-        <div className="bg-gradient-to-br from-stone-900 via-stone-950 to-stone-900 text-white rounded-[36px] p-8 sm:p-12 border border-stone-800 shadow-2xl relative overflow-hidden">
-          <div className="max-w-2xl space-y-3 relative z-10 mb-8">
-            <span className="px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-orange-600 text-white inline-block">
-              {lang === "pt" ? "Passe Comunitário Multi-Estúdio" : "Multi-Studio Community Pass"}
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight">
-              {lang === "pt" ? "Ericeira Pass: Flexibilidade Sem Fidelização" : "Ericeira Pass: Full Flexibility, No Lock-in"}
-            </h2>
-            <p className="text-stone-400 text-sm leading-relaxed">
-              {lang === "pt"
-                ? "Um único saldo de créditos para reservares aulas em múltiplos estúdios parceiros na vila. Paga com MB WAY, Cartão ou PayPal e usa ao teu ritmo."
-                : "A single credit balance to book sessions across multiple verified partner studios. Pay with MB WAY, Card or PayPal and use at your own pace."}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-            {/* Pacote 12 */}
-            <div className="bg-stone-800/80 rounded-3xl p-6 border border-stone-700/80 flex flex-col justify-between space-y-6">
-              <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                  {lang === "pt" ? "Iniciação" : "Starter"}
-                </span>
-                <h3 className="text-2xl font-black">{lang === "pt" ? "12 Créditos" : "12 Credits"}</h3>
-                <p className="text-xs text-stone-400 leading-relaxed">
-                  {lang === "pt"
-                    ? "Ideal para ~3 a 4 aulas de Yoga, Breathwork ou Surf Conditioning."
-                    : "Ideal for ~3 to 4 classes of Yoga, Breathwork or Surf Conditioning."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">59€</span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_12")}
-                className="w-full py-3 rounded-2xl bg-white hover:bg-stone-200 text-stone-950 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50"
-              >
-                {lang === "pt" ? "Comprar 12 Créditos" : "Buy 12 Credits"}
-              </button>
-            </div>
-
-            {/* Pacote 35 (Destaque) */}
-            <div className="bg-orange-600/90 rounded-3xl p-6 border border-orange-400 flex flex-col justify-between space-y-6 relative shadow-xl">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-orange-200">
-                    {lang === "pt" ? "Mais Popular" : "Most Popular"}
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-white text-orange-700 text-[10px] font-black uppercase">
-                    {lang === "pt" ? "Melhor Valor" : "Best Value"}
-                  </span>
-                </div>
-                <h3 className="text-2xl font-black text-white">{lang === "pt" ? "35 Créditos" : "35 Credits"}</h3>
-                <p className="text-xs text-orange-100 leading-relaxed">
-                  {lang === "pt"
-                    ? "O passe ideal para residentes e praticantes regulares (8 a 10 aulas)."
-                    : "The go-to pass for regular community members (8 to 10 classes)."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">165€</span>
-                  <span className="text-xs text-orange-200 ml-1.5">
-                    ({(165 / 35).toFixed(2)}€ / {lang === "pt" ? "crédito" : "credit"})
-                  </span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_35")}
-                className="w-full py-3 rounded-2xl bg-stone-950 hover:bg-black text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-lg disabled:opacity-50"
-              >
-                {lang === "pt" ? "Comprar Ericeira Pass" : "Buy Ericeira Pass"}
-              </button>
-            </div>
-
-            {/* Pacote 70 */}
-            <div className="bg-stone-800/80 rounded-3xl p-6 border border-stone-700/80 flex flex-col justify-between space-y-6">
-              <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
-                  {lang === "pt" ? "Comunidade & Família" : "Community & Family"}
-                </span>
-                <h3 className="text-2xl font-black">{lang === "pt" ? "70 Créditos" : "70 Credits"}</h3>
-                <p className="text-xs text-stone-400 leading-relaxed">
-                  {lang === "pt"
-                    ? "Para quem treina quase diariamente ou partilha créditos no casal."
-                    : "For daily practitioners or couples sharing a single multi-pass."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">315€</span>
-                  <span className="text-xs text-stone-400 ml-1.5">
-                    ({(315 / 70).toFixed(2)}€ / {lang === "pt" ? "crédito" : "credit"})
-                  </span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_70")}
-                className="w-full py-3 rounded-2xl bg-white hover:bg-stone-200 text-stone-950 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50"
-              >
-                {lang === "pt" ? "Comprar 70 Créditos" : "Buy 70 Credits"}
-              </button>
-            </div>
-          </div>
-        </div>
       </section>
 
       {/* MODAL DETALHE DO EVENTO / CHECKOUT */}
