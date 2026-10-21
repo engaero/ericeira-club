@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/context/LanguageContext";
+import Link from "next/link";
 import {
   Calendar,
   Clock,
@@ -205,7 +206,7 @@ export default function ProviderPortalPage() {
 
   if (!provider) {
     return (
-      <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-6 font-sans">
+      <div className="min-h-[85vh] bg-[#FDFBF7] flex items-center justify-center p-6 font-sans">
         <div className="max-w-md w-full bg-white rounded-3xl p-8 border border-stone-200 text-center space-y-4 shadow-sm">
           <AlertCircle className="w-10 h-10 text-orange-600 mx-auto" />
           <h2 className="text-xl font-black text-stone-900">
@@ -213,15 +214,15 @@ export default function ProviderPortalPage() {
           </h2>
           <p className="text-xs text-stone-600 leading-relaxed">
             {lang === "pt"
-              ? "A tua conta ainda não está associada a um perfil de instrutor, artesão ou estúdio no Ericeira Hub."
-              : "Your account is not registered as a host, artisan or studio partner yet."}
+              ? "A tua conta ainda não está associada a um perfil verificado de instrutor ou estúdio no Ericeira Hub."
+              : "Your account is not registered as an instructor or studio partner yet."}
           </p>
-          <a
-            href="mailto:suporte@ericeirahub.pt"
-            className="inline-block px-5 py-2.5 rounded-full bg-stone-900 text-white text-xs font-bold hover:bg-orange-600 transition"
+          <Link
+            href="/become-a-partner"
+            className="inline-block w-full py-3.5 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase tracking-wider transition shadow-md"
           >
-            {lang === "pt" ? "Pedir Credenciais de Parceiro" : "Request Partner Access"}
-          </a>
+            {lang === "pt" ? "Preencher Candidatura de Parceiro" : "Complete Partner Application"}
+          </Link>
         </div>
       </div>
     );
