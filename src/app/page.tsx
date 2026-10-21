@@ -10,16 +10,13 @@ import {
   MapPin,
   Clock,
   Users,
-  CheckCircle2,
   ArrowRight,
-  ShieldCheck,
-  CreditCard,
   Compass,
 } from "lucide-react";
 
-// Categorias organizadas pelos 4 eixos estratégicos do Hub
+// 1. Abas de filtros organizadas pelos 4 eixos temáticos do Hub
 const CATEGORY_TABS = [
-  { id: "all", label_pt: "Tudo", label_en: "All" },
+  { id: "all", label_pt: "Todas as Experiências", label_en: "All Sessions" },
   { id: "corpo_mente", label_pt: "🧘 Corpo & Mente", label_en: "🧘 Body & Mind" },
   { id: "artes_oficinas", label_pt: "🎨 Artes & Oficinas", label_en: "🎨 Arts & Crafts" },
   { id: "sabor_tradicao", label_pt: "🍷 Sabor & Tradição", label_en: "🍷 Taste & Wine" },
@@ -31,6 +28,20 @@ const CATEGORY_MAPPING: Record<string, string[]> = {
   artes_oficinas: ["crafts", "ceramics"],
   sabor_tradicao: ["wine", "coffee"],
   comunidade_linguas: ["ple", "social"],
+};
+
+// 2. Dicionário de tradução para os badges individuais de cada cartão
+const CATEGORY_LABELS_MAP: Record<string, { pt: string; en: string }> = {
+  wellness: { pt: "Wellness & Gelo", en: "Wellness & Ice" },
+  surf: { pt: "Treino Surf", en: "Surf Conditioning" },
+  breathwork: { pt: "Respiração & Foco", en: "Breathwork & Focus" },
+  yoga: { pt: "Yoga", en: "Yoga" },
+  crafts: { pt: "Oficinas Manuais", en: "Crafts & Workshops" },
+  ceramics: { pt: "Cerâmica Manual", en: "Pottery & Ceramics" },
+  wine: { pt: "Vinho & Degustação", en: "Wine & Tasting" },
+  coffee: { pt: "Café Especial", en: "Specialty Coffee" },
+  ple: { pt: "Português para Estrangeiros", en: "Portuguese for Expats" },
+  social: { pt: "Encontros Comunitários", en: "Social Gatherings" },
 };
 
 const CATEGORY_COVERS: Record<string, string> = {
@@ -107,14 +118,14 @@ export default function HomePage() {
     }
   }
 
-  // Filtragem pelos grupos de eixos
+  // Filtragem pelos eixos temáticos
   const filteredEvents = events.filter((ev) => {
     if (selectedCategory === "all") return true;
     const allowed = CATEGORY_MAPPING[selectedCategory] || [];
     return allowed.includes(ev.category);
   });
 
-  // Ação 1: Reserva com Créditos
+  // 1. Reserva com Créditos
   async function handleBookWithCredits(event: any) {
     if (!user) {
       setFeedback({
@@ -151,7 +162,7 @@ export default function HomePage() {
     }
   }
 
-  // Ação 2: Pagamento Direto / Checkout Stripe (Avulso)
+  // 2. Compra Avulsa de Bilhete Direto (Stripe Checkout)
   async function handleBuySingleTicket(event: any) {
     if (!user) {
       setFeedback({
@@ -187,7 +198,7 @@ export default function HomePage() {
     }
   }
 
-  // Ação 3: Compra do Pacote de Créditos
+  // 3. Aquisição de Pacote de Créditos (Ericeira Pass)
   async function handleBuyCreditPackage(packageId: string) {
     if (!user) {
       setFeedback({
@@ -223,9 +234,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-[#FDFBF7] text-stone-900 font-sans selection:bg-orange-100 selection:text-orange-900 pb-24">
-      {/* MENSAGEM / FEEDBACK TOAST */}
+      {/* FEEDBACK TOAST / NOTIFICAÇÃO */}
       {feedback && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
           <div
             className={`p-4 rounded-2xl shadow-xl flex items-center justify-between border backdrop-blur-md ${
               feedback.type === "success"
@@ -245,7 +256,7 @@ export default function HomePage() {
       )}
 
       {/* HERO SECTION */}
-      <section className="relative pt-12 pb-16 px-4 sm:px-8 max-w-7xl mx-auto">
+      <section className="relative pt-12 pb-14 px-4 sm:px-8 max-w-7xl mx-auto">
         <div className="max-w-3xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-100/70 border border-orange-200 text-orange-950 text-xs font-bold tracking-tight">
             <Compass className="w-3.5 h-3.5 text-orange-600" />
@@ -253,7 +264,9 @@ export default function HomePage() {
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.08] text-stone-900">
-            {lang === "pt" ? "Wellness, Oficinas e Tradição na Ericeira." : "Wellness, Crafts & Local Culture in Ericeira."}
+            {lang === "pt"
+              ? "Wellness, Oficinas e Tradição na Ericeira."
+              : "Wellness, Crafts & Local Culture in Ericeira."}
           </h1>
 
           <p className="text-base sm:text-lg text-stone-600 font-normal leading-relaxed max-w-2xl">
@@ -267,15 +280,16 @@ export default function HomePage() {
               <span className="px-3.5 py-1.5 rounded-xl bg-white border border-stone-200 text-xs font-bold shadow-xs flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                 {lang === "pt" ? "O teu saldo:" : "Your balance:"}{" "}
-                <strong className="text-orange-600">{profile.credits_balance || 0}</strong> {lang === "pt" ? "créditos" : "credits"}
+                <strong className="text-orange-600">{profile.credits_balance || 0}</strong>{" "}
+                {lang === "pt" ? "créditos" : "credits"}
               </span>
             </div>
           )}
         </div>
       </section>
 
-      {/* BARRA DE FILTROS */}
-      <section className="sticky top-20 z-20 bg-[#FDFBF7]/90 backdrop-blur-md border-y border-stone-200/60 py-3.5 px-4 sm:px-8 mb-8">
+      {/* BARRA DE FILTROS BILINGUE */}
+      <section className="sticky top-20 z-20 bg-[#FDFBF7]/95 backdrop-blur-md border-y border-stone-200/60 py-3.5 px-4 sm:px-8 mb-8">
         <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto scrollbar-none">
           {CATEGORY_TABS.map((tab) => (
             <button
@@ -293,7 +307,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* GRELHA DE EXPERIÊNCIAS & SESSÕES */}
+      {/* GRELHA DE EXPERIÊNCIAS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-20">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl sm:text-2xl font-black tracking-tight text-stone-900">
@@ -315,7 +329,9 @@ export default function HomePage() {
               {lang === "pt" ? "Sem sessões agendadas nesta categoria" : "No sessions found in this category"}
             </h3>
             <p className="text-xs text-stone-500">
-              {lang === "pt" ? "Seleciona outra categoria para ver a programação." : "Select another filter to explore available activities."}
+              {lang === "pt"
+                ? "Seleciona outra categoria para ver a programação."
+                : "Select another category to explore available activities."}
             </p>
           </div>
         ) : (
@@ -338,6 +354,9 @@ export default function HomePage() {
                 minute: "2-digit",
               });
 
+              const categoryBadge =
+                CATEGORY_LABELS_MAP[ev.category]?.[lang === "pt" ? "pt" : "en"] || ev.category;
+
               return (
                 <div
                   key={ev.id}
@@ -345,22 +364,22 @@ export default function HomePage() {
                   className="group bg-white rounded-3xl border border-stone-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition duration-200 overflow-hidden cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    {/* Imagem de Capa */}
+                    {/* Capa */}
                     <div className="relative h-48 w-full bg-stone-900 overflow-hidden">
                       <img
                         src={coverImg}
                         alt={title}
                         className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
 
-                      <div className="absolute top-3.5 left-3.5 flex gap-2">
+                      <div className="absolute top-3.5 left-3.5 flex gap-1.5 flex-wrap">
                         <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/95 text-stone-900 shadow-xs">
-                          {ev.category}
+                          {categoryBadge}
                         </span>
                         {!isCreditsAllowed && (
                           <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-xs">
-                            Workshop
+                            {lang === "pt" ? "Workshop Especial" : "Special Workshop"}
                           </span>
                         )}
                       </div>
@@ -373,7 +392,7 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    {/* Conteúdo */}
+                    {/* Informação */}
                     <div className="p-5 space-y-3">
                       <h3 className="font-extrabold text-stone-900 text-base leading-snug group-hover:text-orange-600 transition">
                         {title}
@@ -413,13 +432,19 @@ export default function HomePage() {
                         {isCreditsAllowed && (
                           <span className="text-[11px] text-stone-500 font-medium">
                             {lang === "pt" ? "ou" : "or"}{" "}
-                            <strong className="text-stone-800">{creditsCost} cr.</strong>
+                            <strong className="text-stone-800">
+                              {creditsCost} {lang === "pt" ? "créd." : "cred."}
+                            </strong>
                           </span>
                         )}
                       </div>
                       <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1 mt-0.5">
                         <Users className="w-3 h-3 text-stone-400" />
-                        {isSoldOut ? "Esgotado" : `${spotsLeft} vagas restantes`}
+                        {isSoldOut
+                          ? (lang === "pt" ? "Esgotado" : "Sold Out")
+                          : (lang === "pt"
+                              ? `${spotsLeft} de ${ev.max_spots} vagas`
+                              : `${spotsLeft} of ${ev.max_spots} spots`)}
                       </span>
                     </div>
 
@@ -441,7 +466,7 @@ export default function HomePage() {
         )}
       </section>
 
-      {/* SECÇÃO DO ERICEIRA PASS (COMPRA DE CRÉDITOS) */}
+      {/* ERICEIRA PASS - COMPRA DE CRÉDITOS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-20">
         <div className="bg-gradient-to-br from-stone-900 via-stone-950 to-stone-900 text-white rounded-[36px] p-8 sm:p-12 border border-stone-800 shadow-2xl relative overflow-hidden">
           <div className="max-w-2xl space-y-3 relative z-10 mb-8">
@@ -462,9 +487,15 @@ export default function HomePage() {
             {/* Pacote 12 */}
             <div className="bg-stone-800/80 rounded-3xl p-6 border border-stone-700/80 flex flex-col justify-between space-y-6">
               <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Iniciação</span>
-                <h3 className="text-2xl font-black">12 Créditos</h3>
-                <p className="text-xs text-stone-400">Ideal para ~3 a 4 aulas de Yoga, Breathwork ou Surf Conditioning.</p>
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                  {lang === "pt" ? "Iniciação" : "Starter"}
+                </span>
+                <h3 className="text-2xl font-black">{lang === "pt" ? "12 Créditos" : "12 Credits"}</h3>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Ideal para ~3 a 4 aulas de Yoga, Breathwork ou Surf Conditioning."
+                    : "Ideal for ~3 to 4 classes of Yoga, Breathwork or Surf Conditioning."}
+                </p>
                 <div className="pt-2">
                   <span className="text-3xl font-black text-white">59€</span>
                 </div>
@@ -483,16 +514,24 @@ export default function HomePage() {
             <div className="bg-orange-600/90 rounded-3xl p-6 border border-orange-400 flex flex-col justify-between space-y-6 relative shadow-xl">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-orange-200">Mais Popular</span>
+                  <span className="text-xs font-black uppercase tracking-wider text-orange-200">
+                    {lang === "pt" ? "Mais Popular" : "Most Popular"}
+                  </span>
                   <span className="px-2.5 py-0.5 rounded-full bg-white text-orange-700 text-[10px] font-black uppercase">
-                    Melhor Valor
+                    {lang === "pt" ? "Melhor Valor" : "Best Value"}
                   </span>
                 </div>
-                <h3 className="text-2xl font-black text-white">35 Créditos</h3>
-                <p className="text-xs text-orange-100">O passe ideal para residentes e praticantes regulares (8 a 10 aulas).</p>
+                <h3 className="text-2xl font-black text-white">{lang === "pt" ? "35 Créditos" : "35 Credits"}</h3>
+                <p className="text-xs text-orange-100 leading-relaxed">
+                  {lang === "pt"
+                    ? "O passe ideal para residentes e praticantes regulares (8 a 10 aulas)."
+                    : "The go-to pass for regular community members (8 to 10 classes)."}
+                </p>
                 <div className="pt-2">
                   <span className="text-3xl font-black text-white">165€</span>
-                  <span className="text-xs text-orange-200 ml-1.5">(4,71€ / crédito)</span>
+                  <span className="text-xs text-orange-200 ml-1.5">
+                    ({(165 / 35).toFixed(2)}€ / {lang === "pt" ? "crédito" : "credit"})
+                  </span>
                 </div>
               </div>
 
@@ -508,12 +547,20 @@ export default function HomePage() {
             {/* Pacote 70 */}
             <div className="bg-stone-800/80 rounded-3xl p-6 border border-stone-700/80 flex flex-col justify-between space-y-6">
               <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">Comunidade & Família</span>
-                <h3 className="text-2xl font-black">70 Créditos</h3>
-                <p className="text-xs text-stone-400">Para quem treina quase diariamente ou partilha entre o casal.</p>
+                <span className="text-xs font-bold uppercase tracking-wider text-stone-400">
+                  {lang === "pt" ? "Comunidade & Família" : "Community & Family"}
+                </span>
+                <h3 className="text-2xl font-black">{lang === "pt" ? "70 Créditos" : "70 Credits"}</h3>
+                <p className="text-xs text-stone-400 leading-relaxed">
+                  {lang === "pt"
+                    ? "Para quem treina quase diariamente ou partilha créditos no casal."
+                    : "For daily practitioners or couples sharing a single multi-pass."}
+                </p>
                 <div className="pt-2">
                   <span className="text-3xl font-black text-white">315€</span>
-                  <span className="text-xs text-stone-400 ml-1.5">(4,50€ / crédito)</span>
+                  <span className="text-xs text-stone-400 ml-1.5">
+                    ({(315 / 70).toFixed(2)}€ / {lang === "pt" ? "crédito" : "credit"})
+                  </span>
                 </div>
               </div>
 
