@@ -26,9 +26,13 @@ export async function POST(request: Request) {
     const userId = metadata?.userId;
     const itemType = metadata?.itemType;
 
-    // 1. Pacotes de Créditos
+    // 1. Pacotes de Créditos (com Idempotência e Expiração a 90 Dias)
     if ((itemType === "credit_package" || itemType === "ericeira_pass") && userId) {
       const creditsToAdd = parseInt(metadata.creditsToAdd || "10", 10);
+
+      // Calcular validade de 90 dias
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 90);
 
       const { data: profile } = await supabaseAdmin
         .from("profiles")
@@ -39,11 +43,16 @@ export async function POST(request: Request) {
       const currentBalance = profile?.credits_balance || 0;
       const newBalance = currentBalance + creditsToAdd;
 
-      await supabaseAdmin
-        .from("profiles")
-        .upsert({ id: userId, credits_balance: newBalance }, { onConflict: "id" });
+      await supabaseAdmin.from("profiles").upsert(
+        {
+          id: userId,
+          credits_balance: newBalance,
+          credits_expire_at: expiresAt.toISOString(),
+        },
+        { onConflict: "id" }
+      );
 
-      console.log(`[Stripe Webhook] ${creditsToAdd} créditos adicionados ao utilizador ${userId}.`);
+      console.log(`[Stripe Webhook] ${creditsToAdd} créditos adicionados ao utilizador ${userId} (Válidos até ${expiresAt.toLocaleDateString("pt-PT")}).`);
     }
 
     // 2. Compra Avulsa de Aula Específica

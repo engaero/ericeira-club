@@ -31,7 +31,7 @@ export async function POST(request: Request) {
         creditsToAdd = 12;
       } else if (packageId === "pack_35") {
         name = "Ericeira Pass (35 Créditos)";
-        unitAmount = 16500;
+        unitAmount = 17500; // Calibrado para 175,00€ garantindo margem sustentável
         creditsToAdd = 35;
       } else if (packageId === "pack_70") {
         name = "Pack Comunidade (70 Créditos)";
