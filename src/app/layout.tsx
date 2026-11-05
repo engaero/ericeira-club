@@ -67,7 +67,6 @@ function HeaderNav() {
   const { lang, setLang } = useLanguage();
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
-  const [isProvider, setIsProvider] = useState(false);
   const [spotIdx, setSpotIdx] = useState(0);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -75,12 +74,12 @@ function HeaderNav() {
 
   useEffect(() => {
     async function loadUserData(userId: string) {
-      const [{ data: prof }, { data: prov }] = await Promise.all([
-        supabase.from("profiles").select("credits_balance, is_admin").eq("id", userId).maybeSingle(),
-        supabase.from("providers").select("id").eq("user_id", userId).maybeSingle(),
-      ]);
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("credits_balance, is_admin")
+        .eq("id", userId)
+        .maybeSingle();
       setProfile(prof || null);
-      setIsProvider(!!prov);
     }
 
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -98,7 +97,6 @@ function HeaderNav() {
         loadUserData(session.user.id);
       } else {
         setProfile(null);
-        setIsProvider(false);
       }
     });
 
@@ -175,28 +173,29 @@ function HeaderNav() {
           </div>
         </div>
 
-        {/* BARRA PRINCIPAL DE NAVEGAÇÃO */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2.5 group">
+        {/* BARRA PRINCIPAL */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-2 sm:gap-4">
+          <Link href="/" className="flex items-center gap-2 group shrink-0">
             <div className="w-8 h-8 rounded-xl bg-stone-900 text-white flex items-center justify-center font-black text-sm group-hover:bg-orange-600 transition">
               E
             </div>
             <div>
-              <span className="font-black text-base tracking-tight text-stone-900 block leading-tight">
+              <span className="font-black text-sm sm:text-base tracking-tight text-stone-900 block leading-tight">
                 Ericeira Hub
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400 block -mt-0.5">
-                Community Platform
+              <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-stone-400 block -mt-0.5">
+                Community
               </span>
             </div>
           </Link>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* MENUS E BOTÕES (SEMPRE VISÍVEIS) */}
+          <div className="flex items-center gap-1.5 sm:gap-3 flex-wrap justify-end">
             {/* Seletor PT / EN */}
-            <div className="flex items-center bg-stone-100 rounded-full p-1 border border-stone-200 text-xs font-bold">
+            <div className="flex items-center bg-stone-100 rounded-full p-0.5 sm:p-1 border border-stone-200 text-xs font-bold">
               <button
                 onClick={() => setLang("pt")}
-                className={`px-2.5 py-1 rounded-full transition cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full transition cursor-pointer ${
                   lang === "pt"
                     ? "bg-white text-stone-900 shadow-xs"
                     : "text-stone-500 hover:text-stone-900"
@@ -206,7 +205,7 @@ function HeaderNav() {
               </button>
               <button
                 onClick={() => setLang("en")}
-                className={`px-2.5 py-1 rounded-full transition cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full transition cursor-pointer ${
                   lang === "en"
                     ? "bg-white text-stone-900 shadow-xs"
                     : "text-stone-500 hover:text-stone-900"
@@ -216,72 +215,74 @@ function HeaderNav() {
               </button>
             </div>
 
-            {/* Saldo de Créditos para utilizadores autenticados */}
+            {/* Créditos (se autenticado) */}
             {user && profile && (
               <Link
                 href="/dashboard"
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange-50 border border-orange-200/80 text-orange-950 text-xs font-extrabold hover:bg-orange-100 transition"
+                className="flex items-center gap-1 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full bg-orange-50 border border-orange-200/80 text-orange-950 text-xs font-extrabold hover:bg-orange-100 transition"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>
-                  {profile.credits_balance || 0} {lang === "pt" ? "créditos" : "credits"}
-                </span>
+                <span>{profile.credits_balance || 0} cr.</span>
               </Link>
             )}
 
-            {/* Link Permanente: Torne-se Parceiro */}
+            {/* Torne-se Parceiro (SEMPRE VISÍVEL) */}
             <Link
               href="/become-a-partner"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold text-stone-700 hover:text-orange-600 hover:bg-orange-50 transition border border-stone-200 hover:border-orange-200"
+              className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold text-stone-700 hover:text-orange-600 hover:bg-orange-50 transition border border-stone-200"
             >
-              <Briefcase className="w-3.5 h-3.5 text-orange-600" />
-              <span>{lang === "pt" ? "Torne-se Parceiro" : "Become a Partner"}</span>
+              <Briefcase className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+              <span className="whitespace-nowrap">
+                {lang === "pt" ? "Ser Parceiro" : "Partner"}
+              </span>
             </Link>
 
-            {/* Link Permanente: Área Parceiro */}
+            {/* Área Parceiro (SEMPRE VISÍVEL) */}
             <Link
               href="/provider/portal"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition"
+              className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold text-stone-700 hover:text-stone-950 hover:bg-stone-100 transition border border-stone-200"
             >
-              <Compass className="w-3.5 h-3.5 text-stone-500" />
-              <span>{lang === "pt" ? "Área Parceiro" : "Host Portal"}</span>
+              <Compass className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+              <span className="whitespace-nowrap">
+                {lang === "pt" ? "Área Parceiro" : "Host Area"}
+              </span>
             </Link>
 
-            {/* Link Direto: Painel de Administrador (visível se is_admin for true) */}
+            {/* Botão Admin Direto (se is_admin for true) */}
             {profile?.is_admin && (
               <Link
                 href="/admin"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 text-xs font-extrabold hover:bg-purple-100 transition"
+                className="flex items-center gap-1 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-purple-100 text-purple-950 border border-purple-300 text-xs font-black hover:bg-purple-200 transition"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                <ShieldCheck className="w-3.5 h-3.5 text-purple-700 shrink-0" />
                 <span>Admin</span>
               </Link>
             )}
 
-            {/* Bloco de Utilizador com Dropdown */}
+            {/* Perfil / Login */}
             {user ? (
               <div className="relative" ref={menuRef}>
                 <button
                   onClick={() => setMenuOpen(!menuOpen)}
-                  className="flex items-center gap-1.5 p-1.5 sm:px-3 sm:py-2 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-800 transition cursor-pointer"
+                  className="flex items-center gap-1 p-1 sm:px-2.5 sm:py-1.5 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-800 transition cursor-pointer"
                 >
                   <div className="w-6 h-6 rounded-lg bg-stone-900 text-white font-bold text-xs flex items-center justify-center">
                     {user.email ? user.email.charAt(0).toUpperCase() : <User className="w-3.5 h-3.5" />}
                   </div>
-                  <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
+                  <ChevronDown className="w-3 h-3 text-stone-400" />
                 </button>
 
                 {menuOpen && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-stone-200 py-2 z-50 text-xs font-semibold text-stone-700 animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 text-xs font-semibold text-stone-700">
                     <div className="px-4 py-2 border-b border-stone-100">
-                      <p className="text-[10px] text-stone-400 uppercase font-black tracking-wider">Conta</p>
+                      <p className="text-[10px] text-stone-400 uppercase font-black">Conta</p>
                       <p className="truncate text-stone-900 font-bold">{user.email}</p>
                     </div>
 
                     <Link
                       href="/dashboard"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 text-stone-700 hover:text-stone-900 transition"
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-stone-50 text-stone-700 transition"
                     >
                       <LayoutDashboard className="w-4 h-4 text-stone-400" />
                       <span>{lang === "pt" ? "A Minha Área / Reservas" : "My Dashboard"}</span>
@@ -290,17 +291,17 @@ function HeaderNav() {
                     <Link
                       href="/provider/portal"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 text-stone-700 hover:text-stone-900 transition"
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-stone-50 text-stone-700 transition"
                     >
                       <Compass className="w-4 h-4 text-orange-600" />
-                      <span>{lang === "pt" ? "Portal do Instrutor / Anfitrião" : "Host & Studio Portal"}</span>
+                      <span>{lang === "pt" ? "Portal do Instrutor" : "Host Portal"}</span>
                     </Link>
 
                     {profile?.is_admin && (
                       <Link
                         href="/admin"
                         onClick={() => setMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-purple-50 text-purple-900 font-bold transition border-t border-b border-stone-100"
+                        className="flex items-center gap-2 px-4 py-2 hover:bg-purple-50 text-purple-900 font-bold transition border-t border-b border-stone-100"
                       >
                         <ShieldCheck className="w-4 h-4 text-purple-600" />
                         <span>{lang === "pt" ? "Painel de Administração" : "Admin Dashboard"}</span>
@@ -310,10 +311,10 @@ function HeaderNav() {
                     <Link
                       href="/become-a-partner"
                       onClick={() => setMenuOpen(false)}
-                      className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-stone-50 text-stone-700 hover:text-stone-900 transition"
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-stone-50 text-stone-700 transition"
                     >
                       <Briefcase className="w-4 h-4 text-stone-400" />
-                      <span>{lang === "pt" ? "Candidatar Novo Estúdio" : "Apply as New Partner"}</span>
+                      <span>{lang === "pt" ? "Candidatar Novo Estúdio" : "Apply as Partner"}</span>
                     </Link>
 
                     <button
@@ -321,7 +322,7 @@ function HeaderNav() {
                         setMenuOpen(false);
                         handleLogout();
                       }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left text-red-600 hover:bg-red-50 transition border-t border-stone-100 cursor-pointer"
+                      className="w-full flex items-center gap-2 px-4 py-2 text-left text-red-600 hover:bg-red-50 transition border-t border-stone-100 cursor-pointer"
                     >
                       <LogOut className="w-4 h-4" />
                       <span>{lang === "pt" ? "Terminar Sessão" : "Sign Out"}</span>
@@ -332,7 +333,7 @@ function HeaderNav() {
             ) : (
               <button
                 onClick={() => setIsAuthOpen(true)}
-                className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider transition shadow-xs cursor-pointer"
+                className="px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-stone-900 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider transition shadow-xs cursor-pointer"
               >
                 {lang === "pt" ? "Entrar" : "Sign In"}
               </button>
@@ -341,7 +342,6 @@ function HeaderNav() {
         </div>
       </header>
 
-      {/* MODAL DE LOGIN */}
       <AuthModal
         isOpen={isAuthOpen}
         onClose={() => setIsAuthOpen(false)}
@@ -358,9 +358,9 @@ function GlobalFooter() {
   const { lang } = useLanguage();
 
   return (
-    <footer className="bg-stone-900 text-stone-300 font-sans border-t border-stone-800 pt-16 pb-12 mt-20">
+    <footer className="w-full bg-stone-900 text-stone-300 font-sans border-t border-stone-800 pt-16 pb-12 mt-20 block clear-both">
       <div className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 md:grid-cols-4 gap-10 pb-12 border-b border-stone-800">
-        {/* COLUNA 1: IDENTIDADE */}
+        {/* IDENTIDADE */}
         <div className="space-y-4 md:col-span-1">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-white text-stone-900 flex items-center justify-center font-black text-sm">
@@ -378,7 +378,7 @@ function GlobalFooter() {
           </div>
         </div>
 
-        {/* COLUNA 2: COMUNIDADE */}
+        {/* COMUNIDADE */}
         <div className="space-y-3">
           <h4 className="text-xs font-black uppercase tracking-wider text-amber-400">
             {lang === "pt" ? "Comunidade" : "Community"}
@@ -395,13 +395,8 @@ function GlobalFooter() {
               </Link>
             </li>
             <li>
-              <Link href="/guides/health" className="hover:text-white transition">
-                {lang === "pt" ? "Guia Local & Família" : "Local Family Guide"}
-              </Link>
-            </li>
-            <li>
               <Link href="/terms" className="hover:text-white transition">
-                {lang === "pt" ? "Termos & Regras de Cancelamento" : "Terms & Cancellations"}
+                {lang === "pt" ? "Termos & Cancelamentos" : "Terms & Cancellations"}
               </Link>
             </li>
             <li>
@@ -412,7 +407,7 @@ function GlobalFooter() {
           </ul>
         </div>
 
-        {/* COLUNA 3: PARA PARCEIROS & ESTÚDIOS */}
+        {/* PARCEIROS */}
         <div className="space-y-3">
           <h4 className="text-xs font-black uppercase tracking-wider text-orange-500">
             {lang === "pt" ? "Prestadores & Estúdios" : "Partners & Studios"}
@@ -424,28 +419,21 @@ function GlobalFooter() {
                 className="text-white font-bold hover:text-orange-400 transition flex items-center gap-1.5"
               >
                 <Briefcase className="w-3.5 h-3.5 text-orange-500" />
-                <span>{lang === "pt" ? "Torne-se Parceiro do Hub" : "Become a Hub Partner"}</span>
+                <span>{lang === "pt" ? "Torne-se Parceiro do Hub" : "Become a Partner"}</span>
               </Link>
             </li>
             <li>
               <Link href="/provider/portal" className="hover:text-white transition">
-                {lang === "pt" ? "Portal do Instrutor (Sessões & Vagas)" : "Host Portal (Sessions & Spots)"}
+                {lang === "pt" ? "Portal do Instrutor" : "Host Portal"}
               </Link>
-            </li>
-            <li>
-              <span className="text-[11px] text-stone-400 block pt-1">
-                {lang === "pt"
-                  ? "Cobrança integrada com liquidações automáticas e alertas Telegram."
-                  : "Automated payouts and real-time Telegram booking notifications."}
-              </span>
             </li>
           </ul>
         </div>
 
-        {/* COLUNA 4: GESTÃO & ADMIN */}
+        {/* GESTÃO & ADMIN */}
         <div className="space-y-3">
           <h4 className="text-xs font-black uppercase tracking-wider text-stone-400">
-            {lang === "pt" ? "Acesso Interno" : "Operations"}
+            {lang === "pt" ? "Operações" : "Operations"}
           </h4>
           <ul className="space-y-2 text-xs text-stone-400">
             <li>
@@ -454,13 +442,8 @@ function GlobalFooter() {
                 className="hover:text-purple-400 transition flex items-center gap-1.5"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
-                <span>{lang === "pt" ? "Painel de Administração" : "Admin Operations"}</span>
+                <span>{lang === "pt" ? "Painel de Administração" : "Admin Dashboard"}</span>
               </Link>
-            </li>
-            <li className="pt-2 text-[10px] text-stone-400 leading-tight">
-              {lang === "pt"
-                ? "Acesso restrito a administradores para aprovação de parceiros e relatórios financeiros."
-                : "Restricted access for partner approvals and payout reconciliations."}
             </li>
           </ul>
         </div>
@@ -480,7 +463,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="bg-[#FDFBF7] antialiased flex flex-col min-h-screen">
         <LanguageProvider>
           <HeaderNav />
-          <main className="flex-1">{children}</main>
+          <main className="flex-grow">{children}</main>
           <GlobalFooter />
         </LanguageProvider>
       </body>
