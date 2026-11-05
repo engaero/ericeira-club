@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase";
-import { X, Mail, CheckCircle } from "lucide-react";
+import { X, Mail, CheckCircle, AlertCircle } from "lucide-react";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -23,77 +23,106 @@ export default function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps
     setLoading(true);
     setErrorMsg("");
 
+    // Determina o URL de retorno dinamicamente com base no ambiente (produção na Vercel ou local)
+    const redirectUrl =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : "https://ericeira-club.vercel.app";
+
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: "http://localhost:3000",
+        emailRedirectTo: redirectUrl,
       },
     });
 
     setLoading(false);
     if (error) {
-      setErrorMsg(error.message);
+      if (error.message.includes("rate limit")) {
+        setErrorMsg(
+          "Limite temporário de envio de e-mails atingido pelo Supabase. Aguarda alguns minutos antes de tentar novamente ou acede via consola de administração."
+        );
+      } else {
+        setErrorMsg(error.message);
+      }
     } else {
       setSubmitted(true);
     }
   }
 
+  function handleClose() {
+    setErrorMsg("");
+    setSubmitted(false);
+    onClose();
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl relative border border-stone-200">
-        <button 
-          onClick={onClose} 
-          className="absolute top-4 right-4 text-stone-400 hover:text-stone-700"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 font-sans">
+      <div className="bg-white rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl relative border border-stone-200">
+        <button
+          onClick={handleClose}
+          className="absolute top-5 right-5 text-stone-400 hover:text-stone-700 p-1 rounded-xl hover:bg-stone-100 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
         {submitted ? (
-          <div className="text-center py-6 space-y-3">
-            <CheckCircle className="w-12 h-12 text-teal-600 mx-auto" />
-            <h3 className="text-xl font-bold">Link de acesso enviado</h3>
-            <p className="text-sm text-stone-600">
-              Enviámos um link mágico para <strong>{email}</strong>. Clica no link do teu e-mail para entrar automaticamente.
-            </p>
+          <div className="text-center py-6 space-y-4">
+            <div className="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto text-emerald-600 border border-emerald-100">
+              <CheckCircle className="w-8 h-8" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-xl font-black text-stone-900">Link de Acesso Enviado</h3>
+              <p className="text-xs sm:text-sm text-stone-600 leading-relaxed max-w-xs mx-auto">
+                Enviámos um link mágico de acesso para <strong className="text-stone-900">{email}</strong>. Clica no link no teu e-mail para entrar automaticamente.
+              </p>
+            </div>
+            <button
+              onClick={handleClose}
+              className="mt-2 w-full py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
+            >
+              Concluir
+            </button>
           </div>
         ) : (
           <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <h3 className="text-xl font-bold">Entrar no Ericeira Hub</h3>
-              <p className="text-sm text-stone-500">
-                Acede à tua carteira de créditos e reservas de bem-estar.
+            <div className="space-y-1">
+              <h3 className="text-xl font-black text-stone-900">Entrar no Ericeira Hub</h3>
+              <p className="text-xs text-stone-500">
+                Acede à tua carteira de créditos, reservas e sessões da comunidade.
               </p>
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-red-50 text-red-700 text-xs rounded-lg">
-                {errorMsg}
+              <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-2xl flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">{errorMsg}</span>
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">
+            <div className="space-y-1">
+              <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider">
                 E-mail
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-stone-400 absolute left-3 top-3" />
+                <Mail className="w-4 h-4 text-stone-400 absolute left-3.5 top-3.5" />
                 <input
-				  type="email"
-				  required
-				  value={email}
-				  onChange={(e) => setEmail(e.target.value)}
-				  placeholder="o-teu-email@exemplo.com"
-				  className="w-full px-4 py-3 rounded-xl border border-stone-300 bg-white text-stone-900 placeholder-stone-400 text-sm focus:outline-none focus:ring-2 focus:ring-stone-900 focus:border-stone-900 transition"
-				/>
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="o-teu-email@exemplo.com"
+                  className="w-full pl-10 pr-4 py-3 rounded-2xl border border-stone-200 bg-white text-stone-900 placeholder-stone-400 text-xs focus:outline-none focus:border-stone-900 transition"
+                />
               </div>
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-xl bg-teal-700 text-white font-semibold text-sm hover:bg-teal-800 disabled:opacity-50 transition"
+              className="w-full py-3.5 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider disabled:opacity-50 transition shadow-md cursor-pointer"
             >
-              {loading ? "A enviar..." : "Enviar Magic Link"}
+              {loading ? "A enviar link..." : "Enviar Magic Link"}
             </button>
           </form>
         )}
