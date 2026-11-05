@@ -105,7 +105,6 @@ function HeaderNav() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fechar dropdown ao clicar fora
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
@@ -230,34 +229,32 @@ function HeaderNav() {
               </Link>
             )}
 
-            {/* Link Destacado: Torne-se Parceiro */}
+            {/* Link Permanente: Torne-se Parceiro */}
             <Link
               href="/become-a-partner"
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-stone-700 hover:text-orange-600 hover:bg-orange-50 transition border border-stone-200 hover:border-orange-200"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-bold text-stone-700 hover:text-orange-600 hover:bg-orange-50 transition border border-stone-200 hover:border-orange-200"
             >
               <Briefcase className="w-3.5 h-3.5 text-orange-600" />
               <span>{lang === "pt" ? "Torne-se Parceiro" : "Become a Partner"}</span>
             </Link>
 
-            {/* Link Direto: Portal do Prestador */}
-            {(isProvider || (user && profile?.is_admin)) && (
-              <Link
-                href="/provider/portal"
-                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition"
-              >
-                <Compass className="w-3.5 h-3.5 text-stone-500" />
-                <span>{lang === "pt" ? "Área Parceiro" : "Host Portal"}</span>
-              </Link>
-            )}
+            {/* Link Permanente: Área Parceiro */}
+            <Link
+              href="/provider/portal"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold text-stone-600 hover:text-stone-900 hover:bg-stone-100 transition"
+            >
+              <Compass className="w-3.5 h-3.5 text-stone-500" />
+              <span>{lang === "pt" ? "Área Parceiro" : "Host Portal"}</span>
+            </Link>
 
-            {/* Link Direto: Painel de Administrador (apenas visível se for admin) */}
+            {/* Link Direto: Painel de Administrador (visível se is_admin for true) */}
             {profile?.is_admin && (
               <Link
                 href="/admin"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-200 text-xs font-extrabold hover:bg-purple-100 transition"
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                <span className="hidden sm:inline">Admin</span>
+                <span>Admin</span>
               </Link>
             )}
 
