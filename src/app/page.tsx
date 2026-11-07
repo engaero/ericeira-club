@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/context/LanguageContext";
 import EventDetailModal from "@/components/EventDetailModal";
+import Image from "next/image";
+import { authJson } from "@/lib/apiClient";
+import {
+  CATEGORY_TABS,
+  CATEGORY_MAPPING,
+  CATEGORY_LABELS_MAP,
+  CATEGORY_COVERS,
+} from "@/lib/categories";
 import {
   Calendar,
   Sparkles,
@@ -19,224 +27,198 @@ import {
   Ticket,
 } from "lucide-react";
 
-// Categorias organizadas pelos 4 eixos estratégicos do Hub
-const CATEGORY_TABS = [
-  { id: "all", label_pt: "Todas as Experiências", label_en: "All Sessions" },
-  { id: "corpo_mente", label_pt: "🧘 Corpo & Mente", label_en: "🧘 Body & Mind" },
-  { id: "artes_oficinas", label_pt: "🎨 Artes & Oficinas", label_en: "🎨 Arts & Crafts" },
-  { id: "sabor_tradicao", label_pt: "🍷 Sabor & Tradição", label_en: "🍷 Taste & Wine" },
-  { id: "comunidade_linguas", label_pt: "💬 Línguas & Social", label_en: "💬 Languages & Social" },
-];
-
-const CATEGORY_MAPPING: Record<string, string[]> = {
-  corpo_mente: ["wellness", "surf", "breathwork", "yoga"],
-  artes_oficinas: ["crafts", "ceramics"],
-  sabor_tradicao: ["wine", "coffee"],
-  comunidade_linguas: ["ple", "social"],
-};
-
-const CATEGORY_LABELS_MAP: Record<string, { pt: string; en: string }> = {
-  wellness: { pt: "Wellness & Gelo", en: "Wellness & Ice" },
-  surf: { pt: "Treino Surf", en: "Surf Conditioning" },
-  breathwork: { pt: "Respiração & Foco", en: "Breathwork & Focus" },
-  yoga: { pt: "Yoga", en: "Yoga" },
-  crafts: { pt: "Oficinas Manuais", en: "Crafts & Workshops" },
-  ceramics: { pt: "Cerâmica Manual", en: "Pottery & Ceramics" },
-  wine: { pt: "Vinho & Degustação", en: "Wine & Tasting" },
-  coffee: { pt: "Café Especial", en: "Specialty Coffee" },
-  ple: { pt: "Português para Estrangeiros", en: "Portuguese for Expats" },
-  social: { pt: "Encontros Comunitários", en: "Social Gatherings" },
-};
-
-const CATEGORY_COVERS: Record<string, string> = {
-  wellness: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=800&q=80",
-  surf: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=800&q=80",
-  breathwork: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
-  yoga: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=800&q=80",
-  crafts: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=800&q=80",
-  ceramics: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=800&q=80",
-  wine: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=800&q=80",
-  coffee: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80",
-  ple: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=800&q=80",
-  social: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80",
-};
-
 export default function HomePage() {
   const { lang } = useLanguage();
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedLocation, setSelectedLocation] = useState("all");
   const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
-    fetchEvents();
-    fetchUserAndProfile();
+    loadUser();
+    loadEvents();
   }, []);
 
-  async function fetchEvents() {
+  async function loadUser() {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    setUser(session?.user || null);
+
+    if (session?.user) {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("credits_balance, full_name")
+        .eq("id", session.user.id)
+        .maybeSingle();
+      setProfile(prof || null);
+    }
+  }
+
+  async function loadEvents() {
     try {
       setLoading(true);
+      const now = new Date().toISOString();
+
       const { data, error } = await supabase
         .from("events")
         .select(`
-          *,
+          id,
+          provider_id,
+          title_pt,
+          title_en,
+          description_pt,
+          description_en,
+          category,
+          pricing_model,
+          price_eur,
+          credits_cost,
+          max_spots,
+          booked_spots,
+          duration_minutes,
+          start_time,
+          location_name,
+          what_to_bring,
+          image_url,
           providers (
             id,
             name,
+            avatar_url,
             bio_pt,
             bio_en,
-            avatar_url,
-            instagram_handle,
-            telegram_chat_id
+            instagram_handle
           )
         `)
+        .gte("start_time", now)
         .order("start_time", { ascending: true });
 
       if (error) throw error;
       setEvents(data || []);
     } catch (err: any) {
-      console.error("Erro ao carregar sessões:", err.message);
+      console.error("Erro ao carregar eventos:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  async function fetchUserAndProfile() {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    if (session?.user) {
-      setUser(session.user);
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", session.user.id)
-        .maybeSingle();
-
-      if (data) setProfile(data);
-    }
-  }
-
-  const filteredEvents = events.filter((ev) => {
-    if (selectedCategory === "all") return true;
-    const allowed = CATEGORY_MAPPING[selectedCategory] || [];
-    return allowed.includes(ev.category);
-  });
-
-  async function handleBookWithCredits(event: any) {
+  async function handleBookWithCredits(eventOrId: any) {
     if (!user) {
       setFeedback({
         type: "error",
-        message: lang === "pt" ? "Inicia sessão para reservar com créditos." : "Please sign in to book with credits.",
+        message: lang === "pt" ? "Inicia sessão para reservar." : "Please sign in to book.",
       });
       return;
     }
 
-    try {
-      setActionLoading(true);
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId: event.id,
-          userId: user.id,
-        }),
-      });
+    const eventId = typeof eventOrId === "string" ? eventOrId : eventOrId?.id;
+    if (!eventId) return;
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erro ao processar reserva.");
+    try {
+      await authJson("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify({ eventId, userId: user.id }),
+      });
 
       setFeedback({
         type: "success",
-        message: lang === "pt" ? "Vaga confirmada com sucesso!" : "Booking successfully confirmed!",
+        message: lang === "pt" ? "Vaga reservada com sucesso!" : "Booking confirmed!",
       });
-      fetchEvents();
-      fetchUserAndProfile();
+
+      setSelectedEvent(null);
+      await loadEvents();
+      await loadUser();
     } catch (err: any) {
-      setFeedback({ type: "error", message: err.message });
-    } finally {
-      setActionLoading(false);
+      setFeedback({ type: "error", message: err.message || "Erro ao reservar." });
     }
   }
 
-  async function handleBuySingleTicket(event: any) {
+  async function handleBuySingleTicket(
+    eventOrId: any,
+    priceEur?: number,
+    eventTitle?: string
+  ) {
     if (!user) {
       setFeedback({
         type: "error",
-        message: lang === "pt" ? "Inicia sessão para prosseguir para o pagamento." : "Please sign in to proceed to checkout.",
+        message: lang === "pt" ? "Inicia sessão para comprar o bilhete." : "Please sign in to checkout.",
       });
       return;
     }
 
+    const eventId = typeof eventOrId === "string" ? eventOrId : eventOrId?.id;
+    const finalPrice = priceEur ?? eventOrId?.price_eur;
+    const finalTitle = eventTitle ?? eventOrId?.title_pt ?? eventOrId?.title_en ?? "Aula";
+
+    if (!eventId) return;
+
     try {
-      setActionLoading(true);
-      const res = await fetch("/api/checkout", {
+      const res = await authJson<{ url: string }>("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
           userEmail: user.email,
           itemType: "single_ticket",
-          eventId: event.id,
-          eventTitle: lang === "pt" ? event.title_pt || event.title_en : event.title_en || event.title_pt,
-          priceEur: event.price_eur,
+          eventId,
+          eventTitle: finalTitle,
+          priceEur: finalPrice,
         }),
       });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erro ao gerar checkout.");
-      if (json.url) {
-        window.location.href = json.url;
+      if (res?.url) {
+        window.location.href = res.url;
       }
     } catch (err: any) {
-      setFeedback({ type: "error", message: err.message });
-      setActionLoading(false);
+      setFeedback({ type: "error", message: err.message || "Erro no checkout." });
     }
   }
 
-  async function handleBuyCreditPackage(packageId: string) {
-    if (!user) {
-      setFeedback({
-        type: "error",
-        message: lang === "pt" ? "Inicia sessão para adquirir o teu passe." : "Please sign in to purchase your pass.",
-      });
-      return;
-    }
-
-    try {
-      setActionLoading(true);
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user.id,
-          userEmail: user.email,
-          itemType: "credit_package",
-          packageId,
-        }),
-      });
-
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erro ao iniciar compra do passe.");
-      if (json.url) {
-        window.location.href = json.url;
+  // Filtragem
+  const filteredEvents = events.filter((ev) => {
+    if (selectedCategory !== "all") {
+      const allowedCategories = CATEGORY_MAPPING[selectedCategory] || [];
+      if (!allowedCategories.includes(ev.category)) {
+        return false;
       }
-    } catch (err: any) {
-      setFeedback({ type: "error", message: err.message });
-      setActionLoading(false);
     }
-  }
+
+    if (selectedLocation !== "all" && ev.location_name !== selectedLocation) {
+      return false;
+    }
+
+    if (searchQuery.trim() !== "") {
+      const q = searchQuery.toLowerCase();
+      const matchTitle =
+        (ev.title_pt && ev.title_pt.toLowerCase().includes(q)) ||
+        (ev.title_en && ev.title_en.toLowerCase().includes(q));
+      const matchDesc =
+        (ev.description_pt && ev.description_pt.toLowerCase().includes(q)) ||
+        (ev.description_en && ev.description_en.toLowerCase().includes(q));
+      const matchProvider =
+        ev.providers?.name && ev.providers.name.toLowerCase().includes(q);
+      const matchLocation =
+        ev.location_name && ev.location_name.toLowerCase().includes(q);
+
+      if (!matchTitle && !matchDesc && !matchProvider && !matchLocation) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const uniqueLocations = Array.from(
+    new Set(events.map((e) => e.location_name).filter(Boolean))
+  );
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-stone-900 font-sans selection:bg-orange-100 selection:text-orange-900 pb-24">
-      {/* NOTIFICAÇÃO / TOAST */}
+    <div className="min-h-screen bg-[#FDFBF7] text-stone-900 font-sans selection:bg-orange-100 selection:text-orange-900">
       {feedback && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4">
           <div
             className={`p-4 rounded-2xl shadow-xl flex items-center justify-between border backdrop-blur-md ${
               feedback.type === "success"
@@ -255,12 +237,16 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 1. HERO SECTION */}
-      <section className="relative pt-12 pb-10 px-4 sm:px-8 max-w-7xl mx-auto">
-        <div className="max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-100/70 border border-orange-200 text-orange-950 text-xs font-bold tracking-tight">
-            <Compass className="w-3.5 h-3.5 text-orange-600" />
-            <span>Ericeira & Mafra Community Ecosystem</span>
+      {/* HERO SECTION */}
+      <section className="relative pt-12 pb-16 px-4 sm:px-8 max-w-7xl mx-auto">
+        <div className="max-w-3xl space-y-5">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-100/70 border border-orange-200 text-orange-900 text-xs font-bold tracking-wide">
+            <Sparkles className="w-3.5 h-3.5 text-orange-600" />
+            <span>
+              {lang === "pt"
+                ? "Plataforma Oficial da Comunidade"
+                : "Official Community Hub"}
+            </span>
           </div>
 
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight leading-[1.08] text-stone-900">
@@ -288,263 +274,269 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* 2. SECÇÃO COMPLETA: O ERICEIRA PASS (PASSE MULTI-ESTÚDIO) */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-16">
-        <div className="bg-[#1C1917] text-white rounded-[36px] p-6 sm:p-12 border border-stone-800 shadow-2xl relative overflow-hidden">
-          {/* Fundo decorativo sutil */}
-          <div className="absolute -top-24 -right-24 w-96 h-96 bg-orange-600/15 rounded-full blur-3xl pointer-events-none" />
-
-          {/* Cabeçalho da secção */}
-          <div className="max-w-3xl space-y-3 relative z-10 mb-8 sm:mb-12">
-            <span className="px-3.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-orange-600 text-white inline-flex items-center gap-1.5">
-              <Ticket className="w-3.5 h-3.5" />
-              {lang === "pt" ? "Passe Comunitário Multi-Estúdio" : "Multi-Studio Community Pass"}
-            </span>
-
-            <h2 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-              {lang === "pt"
-                ? "Um passe flexível. Todos os teus estúdios favoritos."
-                : "One flexible pass. All your favourite studios."}
+      {/* SECÇÃO DOS 4 EIXOS / MODALIDADES */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pb-10">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <button
+            onClick={() => setSelectedCategory("corpo_mente")}
+            className={`p-5 rounded-3xl border text-left transition-all cursor-pointer ${
+              selectedCategory === "corpo_mente"
+                ? "bg-white border-stone-900 shadow-md ring-2 ring-stone-900"
+                : "bg-white/80 border-stone-200 hover:border-stone-300 hover:bg-white"
+            }`}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200/60 flex items-center justify-center text-lg mb-3">
+              🧘
+            </div>
+            <h2 className="font-black text-sm text-stone-900">
+              {lang === "pt" ? "Corpo & Mente" : "Body & Mind"}
             </h2>
-
-            <p className="text-stone-400 text-sm sm:text-base leading-relaxed">
+            <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
               {lang === "pt"
-                ? "Esquece as mensalidades presas a um único espaço. Com o Ericeira Pass compras uma bolsa de créditos e fazes hoje yoga no SOL Studios, amanhã banho de gelo no The Organic Way e surf conditioning na Praia do Sul. Sem fidelizações."
-                : "No locked-in monthly fees. With Ericeira Pass, get credit packs and practice yoga at SOL Studios today, ice bath at The Organic Way tomorrow, and surf conditioning by Praia do Sul. Full freedom."}
+                ? "Sauna, banho de gelo, respiração, yoga e treino de surf."
+                : "Sauna, ice bath, breathwork, yoga and surf fitness."}
             </p>
+          </button>
 
-            {/* Como funciona resumido */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs text-stone-300">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
-                <span>{lang === "pt" ? "1 crédito ≈ 5€ de valor real" : "1 credit ≈ €5 real value"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
-                <span>{lang === "pt" ? "Reserva imediata em 1 clique" : "Instant 1-click booking"}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-orange-500 shrink-0" />
-                <span>{lang === "pt" ? "Cancelamento sem custos até 12h" : "Free cancel up to 12h before"}</span>
-              </div>
+          <button
+            onClick={() => setSelectedCategory("artes_oficinas")}
+            className={`p-5 rounded-3xl border text-left transition-all cursor-pointer ${
+              selectedCategory === "artes_oficinas"
+                ? "bg-white border-stone-900 shadow-md ring-2 ring-stone-900"
+                : "bg-white/80 border-stone-200 hover:border-stone-300 hover:bg-white"
+            }`}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200/60 flex items-center justify-center text-lg mb-3">
+              🎨
             </div>
+            <h2 className="font-black text-sm text-stone-900">
+              {lang === "pt" ? "Artes & Oficinas" : "Arts & Crafts"}
+            </h2>
+            <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
+              {lang === "pt"
+                ? "Cerâmica, macramé, marcenaria e ofícios manuais."
+                : "Ceramics, macrame, woodworking and artisan crafts."}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setSelectedCategory("sabor_tradicao")}
+            className={`p-5 rounded-3xl border text-left transition-all cursor-pointer ${
+              selectedCategory === "sabor_tradicao"
+                ? "bg-white border-stone-900 shadow-md ring-2 ring-stone-900"
+                : "bg-white/80 border-stone-200 hover:border-stone-300 hover:bg-white"
+            }`}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-rose-50 border border-rose-200/60 flex items-center justify-center text-lg mb-3">
+              🍷
+            </div>
+            <h2 className="font-black text-sm text-stone-900">
+              {lang === "pt" ? "Sabor & Tradição" : "Taste & Tradition"}
+            </h2>
+            <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
+              {lang === "pt"
+                ? "Enoturismo, prova de vinhos de Mafra e café de especialidade."
+                : "Wine tasting, local Mafra vineyards and specialty coffee."}
+            </p>
+          </button>
+
+          <button
+            onClick={() => setSelectedCategory("comunidade_linguas")}
+            className={`p-5 rounded-3xl border text-left transition-all cursor-pointer ${
+              selectedCategory === "comunidade_linguas"
+                ? "bg-white border-stone-900 shadow-md ring-2 ring-stone-900"
+                : "bg-white/80 border-stone-200 hover:border-stone-300 hover:bg-white"
+            }`}
+          >
+            <div className="w-10 h-10 rounded-2xl bg-emerald-50 border border-emerald-200/60 flex items-center justify-center text-lg mb-3">
+              💬
+            </div>
+            <h2 className="font-black text-sm text-stone-900">
+              {lang === "pt" ? "Línguas & Social" : "Languages & Social"}
+            </h2>
+            <p className="text-[11px] text-stone-500 mt-1 leading-relaxed">
+              {lang === "pt"
+                ? "Português para estrangeiros (PLE) e convívios comunitários."
+                : "Portuguese language exchange (PLE) and local meetups."}
+            </p>
+          </button>
+        </div>
+      </section>
+
+      {/* FILTROS E PESQUISA */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pb-6">
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-stone-200/80 shadow-xs space-y-4">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {CATEGORY_TABS.map((tab) => {
+              const isSelected = selectedCategory === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setSelectedCategory(tab.id)}
+                  className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                    isSelected
+                      ? "bg-stone-900 text-white shadow-xs"
+                      : "bg-stone-100 text-stone-600 hover:bg-stone-200/70"
+                  }`}
+                >
+                  {lang === "pt" ? tab.label_pt : tab.label_en}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Cartões dos 3 Pacotes */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative z-10">
-            {/* PACOTE 12 */}
-            <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
-              <div className="space-y-3">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
-                  {lang === "pt" ? "Iniciação / Drop-in" : "Starter Pack"}
-                </span>
-                <h3 className="text-3xl font-black text-white">
-                  12 {lang === "pt" ? "Créditos" : "Credits"}
-                </h3>
-                <p className="text-xs text-stone-400 leading-relaxed">
-                  {lang === "pt"
-                    ? "Ideal para 3 a 4 aulas de Yoga, Breathwork, Sauna ou Treino Funcional."
-                    : "Great for 3 to 4 classes of Yoga, Breathwork, Sauna or Functional Training."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">59€</span>
-                  <span className="text-xs text-stone-500 ml-1.5">(4,91€ / cr.)</span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_12")}
-                className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                {lang === "pt" ? "Comprar 12 Créditos" : "Buy 12 Credits"}
-              </button>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2 border-t border-stone-100">
+            <div className="sm:col-span-8">
+              <input
+                type="text"
+                placeholder={
+                  lang === "pt"
+                    ? "Pesquisar por aula, instrutor ou local..."
+                    : "Search by session, host, or location..."
+                }
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs text-stone-900 placeholder-stone-400 focus:outline-none focus:border-stone-900 transition"
+              />
             </div>
 
-            {/* PACOTE 35 (DESTAQUE) */}
-            <div className="bg-gradient-to-b from-orange-600 to-orange-700 rounded-3xl p-6 sm:p-7 border-2 border-orange-400 flex flex-col justify-between space-y-6 relative shadow-2xl scale-[1.02]">
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black uppercase tracking-wider text-orange-200">
-                    {lang === "pt" ? "Mais Popular" : "Most Popular"}
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-white text-orange-700 text-[10px] font-black uppercase shadow-xs">
-                    {lang === "pt" ? "Melhor Relação" : "Best Value"}
-                  </span>
-                </div>
-                <h3 className="text-3xl font-black text-white">
-                  35 {lang === "pt" ? "Créditos" : "Credits"}
-                </h3>
-                <p className="text-xs text-orange-100 leading-relaxed">
-                  {lang === "pt"
-                    ? "O passe oficial para quem reside ou passa temporadas na Ericeira (8 a 10 aulas)."
-                    : "The go-to pass for regular community members and digital nomads (8 to 10 classes)."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">165€</span>
-                  <span className="text-xs text-orange-200 ml-1.5">
-                    ({(165 / 35).toFixed(2)}€ / cr.)
-                  </span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_35")}
-                className="w-full py-3.5 rounded-2xl bg-stone-950 hover:bg-black text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+            <div className="sm:col-span-4">
+              <select
+                value={selectedLocation}
+                onChange={(e) => setSelectedLocation(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs text-stone-900 focus:outline-none focus:border-stone-900 transition"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                {lang === "pt" ? "Adquirir Ericeira Pass" : "Get Ericeira Pass"}
-              </button>
-            </div>
-
-            {/* PACOTE 70 */}
-            <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
-              <div className="space-y-3">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
-                  {lang === "pt" ? "Comunidade & Família" : "Community & Family"}
-                </span>
-                <h3 className="text-3xl font-black text-white">
-                  70 {lang === "pt" ? "Créditos" : "Credits"}
-                </h3>
-                <p className="text-xs text-stone-400 leading-relaxed">
-                  {lang === "pt"
-                    ? "Para quem treina quase diariamente ou partilha o saldo no seio familiar/casal."
-                    : "For daily athletes or couples sharing one combined multi-studio balance."}
-                </p>
-                <div className="pt-2">
-                  <span className="text-3xl font-black text-white">315€</span>
-                  <span className="text-xs text-stone-500 ml-1.5">
-                    ({(315 / 70).toFixed(2)}€ / cr.)
-                  </span>
-                </div>
-              </div>
-
-              <button
-                disabled={actionLoading}
-                onClick={() => handleBuyCreditPackage("pack_70")}
-                className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                {lang === "pt" ? "Comprar 70 Créditos" : "Buy 70 Credits"}
-              </button>
+                <option value="all">
+                  {lang === "pt" ? "Todas as localizações" : "All locations"}
+                </option>
+                {uniqueLocations.map((loc) => (
+                  <option key={loc} value={loc}>
+                    {loc}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 3. BARRA DE FILTROS BILINGUE */}
-      <section className="sticky top-20 z-20 bg-[#FDFBF7]/95 backdrop-blur-md border-y border-stone-200/60 py-3.5 px-4 sm:px-8 mb-8">
-        <div className="max-w-7xl mx-auto flex items-center gap-2 overflow-x-auto scrollbar-none">
-          {CATEGORY_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setSelectedCategory(tab.id)}
-              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
-                selectedCategory === tab.id
-                  ? "bg-stone-900 text-white shadow-xs"
-                  : "bg-white text-stone-600 border border-stone-200/80 hover:border-stone-400"
-              }`}
-            >
-              {lang === "pt" ? tab.label_pt : tab.label_en}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {/* 4. GRELHA DE EXPERIÊNCIAS & SESSÕES */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-8 mb-20">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl sm:text-2xl font-black tracking-tight text-stone-900">
-            {lang === "pt" ? "Próximas Sessões & Workshops" : "Upcoming Sessions & Workshops"}
-          </h2>
-          <span className="text-xs font-semibold text-stone-500">
-            {filteredEvents.length} {lang === "pt" ? "disponíveis" : "available"}
-          </span>
+      {/* GRELHA DE EVENTOS */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pb-24">
+        <div className="flex items-center justify-between pb-6">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-black text-stone-900">
+              {lang === "pt" ? "Experiências Agendadas" : "Upcoming Sessions"}
+            </h2>
+            <p className="text-xs text-stone-500 mt-0.5">
+              {lang === "pt"
+                ? `${filteredEvents.length} sessões disponíveis para reserva`
+                : `${filteredEvents.length} sessions available for booking`}
+            </p>
+          </div>
         </div>
 
         {loading ? (
-          <div className="py-20 text-center text-xs font-bold text-stone-400 tracking-wider uppercase">
-            {lang === "pt" ? "A carregar agenda..." : "Loading schedule..."}
+          <div className="py-20 text-center text-xs text-stone-400 font-bold uppercase tracking-wider">
+            {lang === "pt" ? "A carregar sessões..." : "Loading sessions..."}
           </div>
         ) : filteredEvents.length === 0 ? (
-          <div className="py-16 text-center bg-white rounded-3xl border border-stone-200/70 p-8 space-y-2">
-            <Calendar className="w-8 h-8 text-stone-400 mx-auto" />
-            <h3 className="font-extrabold text-stone-800 text-sm">
-              {lang === "pt" ? "Sem sessões agendadas nesta categoria" : "No sessions found in this category"}
+          <div className="bg-white rounded-3xl p-12 text-center border border-stone-200/80 space-y-3">
+            <Compass className="w-10 h-10 text-stone-300 mx-auto" />
+            <h3 className="font-extrabold text-stone-900 text-base">
+              {lang === "pt" ? "Nenhuma sessão encontrada" : "No sessions found"}
             </h3>
-            <p className="text-xs text-stone-500">
+            <p className="text-xs text-stone-500 max-w-sm mx-auto">
               {lang === "pt"
-                ? "Seleciona outra categoria para ver a programação."
-                : "Select another category to explore available activities."}
+                ? "Não foram encontradas experiências para os filtros selecionados. Tenta limpar a pesquisa."
+                : "No experiences match your current filters. Try adjusting your search."}
             </p>
+            <button
+              onClick={() => {
+                setSelectedCategory("all");
+                setSelectedLocation("all");
+                setSearchQuery("");
+              }}
+              className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition cursor-pointer"
+            >
+              {lang === "pt" ? "Limpar Filtros" : "Clear Filters"}
+            </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredEvents.map((ev) => {
               const spotsLeft = ev.max_spots - ev.booked_spots;
               const isSoldOut = spotsLeft <= 0;
-              const isCreditsAllowed = (ev.pricing_model ?? "credits_allowed") === "credits_allowed";
-              const creditsCost = ev.credits_cost || Math.round(ev.price_eur / 5);
-              const coverImg = CATEGORY_COVERS[ev.category] || CATEGORY_COVERS.wellness;
+              const title =
+                lang === "pt"
+                  ? ev.title_pt || ev.title_en
+                  : ev.title_en || ev.title_pt;
+              const categoryObj = CATEGORY_LABELS_MAP[ev.category] || {
+                pt: ev.category,
+                en: ev.category,
+                emoji: "🌊",
+              };
 
-              const title = lang === "pt" ? ev.title_pt || ev.title_en : ev.title_en || ev.title_pt;
-              const dateStr = new Date(ev.start_time).toLocaleDateString(lang === "pt" ? "pt-PT" : "en-US", {
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-              });
-              const timeStr = new Date(ev.start_time).toLocaleTimeString(lang === "pt" ? "pt-PT" : "en-US", {
-                hour: "2-digit",
-                minute: "2-digit",
-              });
-
-              const categoryBadge =
-                CATEGORY_LABELS_MAP[ev.category]?.[lang === "pt" ? "pt" : "en"] || ev.category;
+              const dateObj = new Date(ev.start_time);
+              const formattedDate = dateObj.toLocaleDateString(
+                lang === "pt" ? "pt-PT" : "en-US",
+                {
+                  weekday: "short",
+                  day: "numeric",
+                  month: "short",
+                }
+              );
+              const formattedTime = dateObj.toLocaleTimeString(
+                lang === "pt" ? "pt-PT" : "en-US",
+                {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }
+              );
 
               return (
                 <div
                   key={ev.id}
                   onClick={() => setSelectedEvent(ev)}
-                  className="group bg-white rounded-3xl border border-stone-200/80 shadow-xs hover:shadow-xl hover:-translate-y-1 transition duration-200 overflow-hidden cursor-pointer flex flex-col justify-between"
+                  className="bg-white rounded-3xl border border-stone-200/90 overflow-hidden shadow-xs hover:shadow-lg hover:border-stone-400/80 transition-all cursor-pointer flex flex-col justify-between group"
                 >
-                  <div>
-                    {/* Imagem de Capa */}
-                    <div className="relative h-48 w-full bg-stone-900 overflow-hidden">
-                      <img
-                        src={coverImg}
-                        alt={title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
+                  <div className="p-6 space-y-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-stone-100 text-stone-800">
+                        {categoryObj.emoji} {lang === "pt" ? categoryObj.pt : categoryObj.en}
+                      </span>
 
-                      <div className="absolute top-3.5 left-3.5 flex gap-1.5 flex-wrap">
-                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/95 text-stone-900 shadow-xs">
-                          {categoryBadge}
+                      {ev.pricing_model === "direct_only" ? (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200 flex items-center gap-1">
+                          <Ticket className="w-3 h-3 text-amber-700" />
+                          <span>Workshop Direto</span>
                         </span>
-                        {!isCreditsAllowed && (
-                          <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-xs">
-                            {lang === "pt" ? "Workshop" : "Workshop"}
+                      ) : (
+                        <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-orange-50 text-orange-800 border border-orange-200/60 flex items-center gap-1">
+                          <Zap className="w-3 h-3 text-orange-600" />
+                          <span>
+                            {ev.credits_cost || Math.round(ev.price_eur / 5)} cr.
                           </span>
-                        )}
-                      </div>
-
-                      <div className="absolute bottom-3 left-4 right-4 text-white flex items-center justify-between text-xs">
-                        <span className="font-bold capitalize flex items-center gap-1 text-amber-300">
-                          🗓️ {dateStr} • {timeStr}
                         </span>
-                        <span className="text-[11px] text-stone-300 font-semibold">{ev.duration_minutes} min</span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="text-lg font-black text-stone-900 group-hover:text-orange-600 transition-colors line-clamp-2 leading-snug">
+                        {title}
+                      </h3>
+                      <div className="flex items-center gap-2 text-xs text-stone-500 mt-2 font-medium">
+                        <Calendar className="w-3.5 h-3.5 text-stone-400" />
+                        <span>
+                          {formattedDate} • {formattedTime}
+                        </span>
+                        <span>•</span>
+                        <Clock className="w-3.5 h-3.5 text-stone-400" />
+                        <span>{ev.duration_minutes} min</span>
                       </div>
                     </div>
 
-                    {/* Conteúdo */}
-                    <div className="p-5 space-y-3">
-                      <h3 className="font-extrabold text-stone-900 text-base leading-snug group-hover:text-orange-600 transition">
-                        {title}
-                      </h3>
-
-                      <div className="flex items-center gap-1.5 text-xs text-stone-500">
+                    <div className="pt-2 border-t border-stone-100 space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs text-stone-600">
                         <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0" />
                         <span className="truncate">{ev.location_name}</span>
                       </div>
@@ -570,38 +562,31 @@ export default function HomePage() {
                     </div>
                   </div>
 
-                  {/* Rodapé do Cartão */}
                   <div className="px-5 py-4 border-t border-stone-100 flex items-center justify-between bg-[#FAF9F6]">
                     <div>
                       <div className="flex items-baseline gap-1.5">
-                        <span className="font-black text-stone-900 text-lg">{ev.price_eur}€</span>
-                        {isCreditsAllowed && (
-                          <span className="text-[11px] text-stone-500 font-medium">
-                            {lang === "pt" ? "ou" : "or"}{" "}
-                            <strong className="text-stone-800">
-                              {creditsCost} {lang === "pt" ? "créd." : "cred."}
-                            </strong>
+                        <span className="text-xl font-black text-stone-900">
+                          {ev.price_eur}€
+                        </span>
+                        {ev.pricing_model !== "direct_only" && (
+                          <span className="text-[11px] font-bold text-stone-400">
+                            ou {ev.credits_cost || Math.round(ev.price_eur / 5)} cr.
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1 mt-0.5">
-                        <Users className="w-3 h-3 text-stone-400" />
+                      <span
+                        className={`text-[10px] font-extrabold block ${
+                          isSoldOut ? "text-red-600" : "text-stone-500"
+                        }`}
+                      >
                         {isSoldOut
-                          ? (lang === "pt" ? "Esgotado" : "Sold Out")
-                          : (lang === "pt"
-                              ? `${spotsLeft} de ${ev.max_spots} vagas`
-                              : `${spotsLeft} of ${ev.max_spots} spots`)}
+                          ? (lang === "pt" ? "Esgotado" : "Sold out")
+                          : `${spotsLeft} ${lang === "pt" ? "vagas restantes" : "spots left"}`}
                       </span>
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedEvent(ev);
-                      }}
-                      className="px-4 py-2 rounded-xl bg-stone-900 hover:bg-orange-600 text-white text-xs font-bold transition shadow-xs cursor-pointer flex items-center gap-1"
-                    >
-                      <span>{lang === "pt" ? "Ver Detalhes" : "Details"}</span>
+                    <button className="px-4 py-2 rounded-xl bg-stone-900 text-white font-black text-xs uppercase tracking-wider group-hover:bg-orange-600 transition flex items-center gap-1 cursor-pointer">
+                      <span>{lang === "pt" ? "Reservar" : "Book"}</span>
                       <ArrowRight className="w-3 h-3" />
                     </button>
                   </div>
@@ -613,13 +598,15 @@ export default function HomePage() {
       </section>
 
       {/* MODAL DETALHE DO EVENTO / CHECKOUT */}
-      <EventDetailModal
-        event={selectedEvent}
-        isOpen={Boolean(selectedEvent)}
-        onClose={() => setSelectedEvent(null)}
-        onBookWithCredits={handleBookWithCredits}
-        onBuySingleTicket={handleBuySingleTicket}
-      />
+      {selectedEvent && (
+        <EventDetailModal
+          event={selectedEvent}
+          isOpen={Boolean(selectedEvent)}
+          onClose={() => setSelectedEvent(null)}
+          onBookWithCredits={handleBookWithCredits}
+          onBuySingleTicket={handleBuySingleTicket}
+        />
+      )}
     </div>
   );
 }
