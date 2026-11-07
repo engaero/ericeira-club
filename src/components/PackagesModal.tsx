@@ -1,153 +1,135 @@
 "use client";
 
 import { useState } from "react";
-import { X, Check, Sparkles, CreditCard, ShieldCheck } from "lucide-react";
+import { X, Sparkles, ShieldCheck, CreditCard } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { CREDIT_PACKS } from "@/lib/pricing";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onSelectPackage: (packageId: string) => void;
+  onSelectPackage?: (packageId: string) => void;
+  onSelectPack?: (packageId: string) => void;
 }
 
-export default function PackagesModal({ isOpen, onClose, onSelectPackage }: Props) {
+export default function PackagesModal({
+  isOpen,
+  onClose,
+  onSelectPackage,
+  onSelectPack,
+}: Props) {
   const { lang } = useLanguage();
-  const [selected, setSelected] = useState("pack_35");
+  const [selectedPackId, setSelectedPackId] = useState<string>("pack_35");
 
   if (!isOpen) return null;
 
-  const packages = [
-    {
-      id: "pack_12",
-      name: lang === "pt" ? "Pack Iniciante" : "Starter Pack",
-      credits: 12,
-      price: 59,
-      dropInEquivalent: 72,
-      badge: null,
-      desc:
-        lang === "pt"
-          ? "Dá para 3 aulas regulares de 20€ (4 créditos cada). Poupança imediata face ao valor de balcão."
-          : "Covers 3 standard classes (4 credits each). Immediate savings versus drop-in rates.",
-    },
-    {
-      id: "pack_35",
-      name: "Ericeira Pass",
-      credits: 35,
-      price: 175,
-      dropInEquivalent: 210,
-      badge: lang === "pt" ? "Mais Popular • Poupa 35€" : "Most Popular • Save 35€",
-      desc:
-        lang === "pt"
-          ? "Dá para 7 a 9 aulas na vila. Custo médio de 5,00€ por crédito com acesso prioritário."
-          : "Covers 7 to 9 classes across town. Average 5.00€ per credit with priority booking.",
-    },
-    {
-      id: "pack_70",
-      name: lang === "pt" ? "Pack Comunidade / Pro" : "Community Pro",
-      credits: 70,
-      price: 315,
-      dropInEquivalent: 420,
-      badge: lang === "pt" ? "Máxima Poupança • Poupa 105€" : "Best Value • Save 105€",
-      desc:
-        lang === "pt"
-          ? "Apenas 4,50€ por crédito. Ideal para residentes, nómadas de média duração e uso frequente."
-          : "Only 4.50€ per credit. Ideal for residents, medium-stay nomads and regular attendance.",
-    },
-  ];
+  const packs = Object.values(CREDIT_PACKS);
+
+  function handleConfirm() {
+    if (onSelectPackage) {
+      onSelectPackage(selectedPackId);
+    } else if (onSelectPack) {
+      onSelectPack(selectedPackId);
+    }
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto font-sans">
-      <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl relative border border-stone-200 my-8">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 overflow-hidden shadow-2xl border border-stone-200 relative my-6 flex flex-col max-h-[92vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-stone-400 hover:text-stone-700 cursor-pointer"
+          className="absolute top-5 right-5 text-stone-400 hover:text-stone-700 p-1 rounded-xl hover:bg-stone-100 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="text-center space-y-2 mb-8">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-orange-50 text-orange-900 border border-orange-200">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            {lang === "pt" ? "Tarifas de Membro • Sem Fidelização" : "Member Rates • Zero Commitment"}
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-black text-stone-900">
+        <div className="space-y-2 mb-6">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-900 text-[11px] font-bold">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            <span>{lang === "pt" ? "Ericeira Pass Oficial" : "Official Ericeira Pass"}</span>
+          </div>
+          <h3 className="text-2xl font-black text-stone-900 tracking-tight">
             {lang === "pt" ? "Escolhe o teu Pacote de Créditos" : "Choose Your Credit Pack"}
-          </h2>
-          <p className="text-xs sm:text-sm text-stone-500 max-w-md mx-auto">
+          </h3>
+          <p className="text-xs text-stone-500 leading-relaxed">
             {lang === "pt"
-              ? "Reserva diretamente nas melhores salas e estúdios da Ericeira com confirmação imediata. Créditos válidos por 90 dias."
-              : "Book directly at the best spots and studios in Ericeira with instant confirmation. Credits valid for 90 days."}
+              ? "Usa créditos para reservar aulas em múltiplos estúdios e instrutores na Ericeira sem subscrições fixas."
+              : "Use credits across verified studios and hosts in Ericeira with complete flexibility."}
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-4 mb-8">
-          {packages.map((pkg) => {
-            const isSel = selected === pkg.id;
+        <div className="space-y-3 overflow-y-auto flex-1 pr-1">
+          {packs.map((pack) => {
+            const isSelected = selectedPackId === pack.id;
             return (
               <div
-                key={pkg.id}
-                onClick={() => setSelected(pkg.id)}
-                className={`rounded-2xl p-5 border-2 cursor-pointer transition-all flex flex-col justify-between relative ${
-                  isSel
-                    ? "border-stone-900 bg-stone-50/60 shadow-md"
+                key={pack.id}
+                onClick={() => setSelectedPackId(pack.id)}
+                className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
+                  isSelected
+                    ? "border-stone-900 bg-stone-50/70 shadow-sm ring-2 ring-stone-900"
                     : "border-stone-200 hover:border-stone-300 bg-white"
                 }`}
               >
-                {pkg.badge && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-amber-400 text-stone-950 font-bold text-[10px] uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-xs whitespace-nowrap">
-                    {pkg.badge}
-                  </span>
-                )}
-
-                <div className="space-y-3">
-                  <div className="pt-1">
-                    <h3 className="font-extrabold text-stone-900 text-base">{pkg.name}</h3>
-                    <p className="text-[11px] text-stone-500 leading-tight mt-1">{pkg.desc}</p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm text-stone-900">{pack.name}</span>
+                    {pack.popular && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-orange-100 text-orange-900 border border-orange-200">
+                        {lang === "pt" ? "Mais Popular" : "Best Value"}
+                      </span>
+                    )}
                   </div>
-
-                  <div>
-                    <span className="text-2xl font-black text-stone-900">{pkg.price}€</span>
-                    <span className="text-xs text-stone-400 block line-through">
-                      {pkg.dropInEquivalent}€ {lang === "pt" ? "em avulso" : "drop-in"}
+                  <p className="text-[11px] text-stone-500">
+                    {pack.credits} {lang === "pt" ? "créditos" : "credits"} • ~{Math.round(pack.credits / 3)}{" "}
+                    {lang === "pt" ? "sessões estimadas" : "estimated sessions"}
+                  </p>
+                  {pack.savingsEur > 0 && (
+                    <span className="text-[11px] font-bold text-emerald-700 block">
+                      {lang === "pt"
+                        ? `Poupança real de ${pack.savingsEur} € face ao valor avulso`
+                        : `Real savings of ${pack.savingsEur} € vs drop-in rate`}
                     </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-stone-100 text-xs text-stone-700 space-y-1.5 font-medium">
-                    <div className="flex items-center gap-1.5 text-stone-900 font-bold">
-                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                      <span>{pkg.credits} {lang === "pt" ? "Créditos" : "Credits"}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-stone-500 text-[11px]">
-                      <ShieldCheck className="w-3 h-3 text-stone-400 shrink-0" />
-                      <span>{lang === "pt" ? "Válido 90 dias" : "Valid 90 days"}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-stone-100 flex items-center justify-center">
-                  <span
-                    className={`w-4 h-4 rounded-full border flex items-center justify-center ${
-                      isSel ? "border-stone-900 bg-stone-900 text-white" : "border-stone-300"
-                    }`}
-                  >
-                    {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </span>
+                <div className="text-right shrink-0">
+                  <div className="text-xl font-black text-stone-900">{pack.priceEur} €</div>
+                  {pack.savingsEur > 0 && (
+                    <span className="text-[11px] text-stone-400 line-through block">
+                      {pack.originalValueEur} €
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
 
-        <button
-          onClick={() => {
-            onSelectPackage(selected);
-            onClose();
-          }}
-          className="w-full py-3.5 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-extrabold text-sm transition shadow-lg cursor-pointer flex items-center justify-center gap-2"
-        >
-          <CreditCard className="w-4 h-4" />
-          {lang === "pt" ? "Continuar para Pagamento Seguro" : "Proceed to Secure Checkout"}
-        </button>
+        <div className="pt-6 mt-4 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 text-[11px] text-stone-500">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>
+              {lang === "pt"
+                ? "Pagamento seguro Stripe • Créditos válidos por 90 dias"
+                : "Secure Stripe checkout • Credits valid for 90 days"}
+            </span>
+          </div>
+
+          <button
+            onClick={handleConfirm}
+            className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-extrabold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer flex items-center justify-center gap-2"
+          >
+            <CreditCard className="w-3.5 h-3.5" />
+            <span>{lang === "pt" ? "Continuar para Pagamento" : "Proceed to Checkout"}</span>
+          </button>
+        </div>
       </div>
     </div>
   );
