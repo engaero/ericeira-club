@@ -1,37 +1,37 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { ApiError, handleApiError, readJson, requireAdmin, throwFromRpcError } from "@/lib/auth";
+import { cleanString, toNumber } from "@/lib/validators";
 
 export async function POST(request: Request) {
   try {
-    const { adminUserId, providerId, amountEur, periodStart, periodEnd, bankReference } = await request.json();
+    await requireAdmin(request);
+    const body = await readJson(request);
 
-    // 1. Confirmar privilégios de administrador
-    const { data: adminProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", adminUserId)
-      .single();
-
-    if (!adminProfile?.is_admin) {
-      return NextResponse.json({ error: "Acesso reservado a administradores." }, { status: 403 });
+    const providerId = cleanString(body.providerId, 64);
+    const amount = toNumber(body.amountEur);
+    if (!providerId || amount === null || amount <= 0 || amount > 100000) {
+      throw new ApiError(400, "Dados do pagamento inválidos.", "invalid_payout");
     }
 
-    // 2. Registar transferência concluída
-    const { data, error } = await supabaseAdmin.from("provider_payouts").insert({
-      provider_id: providerId,
-      amount_eur: parseFloat(amountEur),
-      period_start: periodStart,
-      period_end: periodEnd,
-      bank_reference: bankReference || "Transferência Bancária SEPA",
-      status: "paid",
-    }).select().single();
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    const periodStart = new Date(String(body.periodStart));
+    const periodEnd = new Date(String(body.periodEnd));
+    if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
+      throw new ApiError(400, "Período inválido.", "invalid_period");
     }
+
+    // O valor é validado contra o saldo dentro da função SQL (com lock no prestador).
+    const { data, error } = await supabaseAdmin.rpc("app_record_payout", {
+      p_provider_id: providerId,
+      p_amount_cents: Math.round(amount * 100),
+      p_period_start: periodStart.toISOString(),
+      p_period_end: periodEnd.toISOString(),
+      p_reference: cleanString(body.bankReference, 120) || "Transferência Bancária SEPA",
+    });
+    throwFromRpcError(error);
 
     return NextResponse.json({ success: true, payout: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Erro interno." }, { status: 500 });
+  } catch (err) {
+    return handleApiError(err, "admin/payouts");
   }
 }

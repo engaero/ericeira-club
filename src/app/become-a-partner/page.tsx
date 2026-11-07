@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { authJson } from "@/lib/apiClient";
 import AuthModal from "@/components/AuthModal";
 import { ArrowLeft, Sparkles, CheckCircle2, User, Send } from "lucide-react";
 
@@ -53,23 +54,16 @@ export default function BecomePartnerPage() {
     setErrorMsg("");
 
     try {
-      const res = await fetch("/api/provider/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUser.id,
+      await authJson("/api/provider/register", {
+        body: {
           name,
           type,
           category,
           bioEn,
           telegramChatId: telegramChatId.trim(),
-          email: currentUser.email,
           hourlyRateEur: hourlyRate ? parseFloat(hourlyRate) : null,
-        }),
+        },
       });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
 
       // Redireciona de imediato para o portal do instrutor
       router.push("/provider/portal");

@@ -1,52 +1,86 @@
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { ApiError, handleApiError, readJson, requireUser } from "@/lib/auth";
+import { CREDIT_PACKS, isPackId } from "@/lib/pricing";
+import { isUuid } from "@/lib/validators";
+
+const STRIPE_MIN_CENTS = 50;
 
 export async function POST(request: Request) {
   try {
-    const { userId, userEmail, itemType, packageId, eventId, eventTitle, priceEur } = await request.json();
+    const user = await requireUser(request);
+    if (!user.email) throw new ApiError(400, "A tua conta não tem e-mail associado.", "no_email");
 
-    if (!userId || !userEmail) {
-      return NextResponse.json({ error: "Utilizador não autenticado." }, { status: 401 });
-    }
+    const body = await readJson(request);
+    const itemType = String(body.itemType ?? "");
 
-    const origin = request.headers.get("origin") || "http://localhost:3000";
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin).replace(/\/$/, "");
 
-    let metadata: Record<string, string> = {
-      userId,
-      itemType,
-    };
-
-    let lineItems = [];
+    const metadata: Record<string, string> = { userId: user.id, itemType };
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
     let mode: "payment" | "subscription" = "payment";
 
-    // 1. PACOTES DE CRÉDITOS (PAGAMENTO ÚNICO)
+    // 1. PACOTES DE CRÉDITOS
     if (itemType === "credit_package") {
-      let name = "Ericeira Pass (35 Créditos)";
-      let unitAmount = 16500;
-      let creditsToAdd = 35;
+      if (!isPackId(body.packageId)) throw new ApiError(400, "Pacote inválido.", "invalid_package");
+      const pack = CREDIT_PACKS[body.packageId];
 
-      if (packageId === "pack_12") {
-        name = "Pack Iniciante (12 Créditos)";
-        unitAmount = 5900;
-        creditsToAdd = 12;
-      } else if (packageId === "pack_35") {
-        name = "Ericeira Pass (35 Créditos)";
-        unitAmount = 17500; // Calibrado para 175,00€ garantindo margem sustentável
-        creditsToAdd = 35;
-      } else if (packageId === "pack_70") {
-        name = "Pack Comunidade (70 Créditos)";
-        unitAmount = 31500;
-        creditsToAdd = 70;
-      }
-
-      metadata.creditsToAdd = creditsToAdd.toString();
+      metadata.packageId = body.packageId;
+      metadata.creditsToAdd = String(pack.credits);
 
       lineItems.push({
         price_data: {
           currency: "eur",
           product_data: {
-            name,
-            description: `Carteira de ${creditsToAdd} créditos para aulas e workshops na Ericeira.`,
+            name: pack.name,
+            description: `Carteira de ${pack.credits} créditos para aulas e workshops na Ericeira.`,
+          },
+          unit_amount: pack.amountCents,
+        },
+        quantity: 1,
+      });
+    }
+
+    // 2. BILHETE AVULSO
+    else if (itemType === "single_ticket") {
+      if (!isUuid(body.eventId)) throw new ApiError(400, "Sessão inválida.", "invalid_event");
+
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("id, title_pt, title_en, price_eur, start_time, max_spots, booked_spots")
+        .eq("id", body.eventId)
+        .maybeSingle();
+
+      if (!ev) throw new ApiError(404, "Sessão não encontrada.", "event_not_found");
+      if (new Date(ev.start_time).getTime() <= Date.now()) throw new ApiError(400, "Esta sessão já começou.", "event_started");
+      if (ev.booked_spots >= ev.max_spots) throw new ApiError(409, "Esta sessão está esgotada.", "event_full");
+
+      const { data: existing } = await supabaseAdmin
+        .from("bookings")
+        .select("id")
+        .eq("event_id", ev.id)
+        .eq("user_id", user.id)
+        .eq("status", "confirmed")
+        .maybeSingle();
+      if (existing) throw new ApiError(409, "Já tens uma vaga confirmada nesta aula.", "already_booked");
+
+      const unitAmount = Math.round(Number(ev.price_eur) * 100);
+      if (!Number.isFinite(unitAmount) || unitAmount < STRIPE_MIN_CENTS) {
+        throw new ApiError(400, "Esta sessão não está disponível para compra direta.", "invalid_price");
+      }
+
+      const title = ev.title_pt || ev.title_en || "Aula";
+      metadata.eventId = ev.id;
+      metadata.eventTitle = title.slice(0, 200);
+
+      lineItems.push({
+        price_data: {
+          currency: "eur",
+          product_data: {
+            name: `Bilhete Avulso: ${title}`.slice(0, 250),
+            description: "Reserva imediata (inclui taxa de serviço).",
           },
           unit_amount: unitAmount,
         },
@@ -54,31 +88,23 @@ export async function POST(request: Request) {
       });
     }
 
-    // 2. COMPRA AVULSA (PAGAMENTO ÚNICO)
-    else if (itemType === "single_ticket") {
-      if (!eventId || !priceEur) {
-        return NextResponse.json({ error: "Dados do evento incompletos." }, { status: 400 });
-      }
-
-      metadata.eventId = eventId;
-      metadata.eventTitle = eventTitle || "Aula Avulso";
-
-      lineItems.push({
-        price_data: {
-          currency: "eur",
-          product_data: {
-            name: `Bilhete Avulso: ${eventTitle}`,
-            description: "Reserva imediata (inclui taxa de serviço).",
-          },
-          unit_amount: Math.round(Number(priceEur) * 100),
-        },
-        quantity: 1,
-      });
-    }
-
-    // 3. SUBSCRIÇÃO DO CONCIERGE (MENSAL RECORRENTE)
+    // 3. SUBSCRIÇÃO CONCIERGE
     else if (itemType === "concierge_subscription") {
       mode = "subscription";
+
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("concierge_tier, concierge_valid_until")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      const stillActive =
+        profile?.concierge_tier &&
+        profile.concierge_tier !== "free" &&
+        profile.concierge_valid_until &&
+        new Date(profile.concierge_valid_until).getTime() > Date.now();
+      if (stillActive) throw new ApiError(409, "Já tens uma subscrição Concierge ativa.", "already_subscribed");
+
       lineItems.push({
         price_data: {
           currency: "eur",
@@ -91,32 +117,34 @@ export async function POST(request: Request) {
         },
         quantity: 1,
       });
+    } else {
+      throw new ApiError(400, "Tipo de compra inválido.", "invalid_item");
     }
 
-    // O MB WAY só é compatível com compras avulso e pacotes (não recorrente).
-    // Nas subscrições mensais usamos ["card", "paypal"].
-    const paymentMethodTypes = mode === "subscription" 
-      ? ["card", "paypal"] 
-      : ["card", "mb_way", "paypal"];
+    // Configuração agnóstica de payment_method_types compatível com Stripe v14 a v23
+    const paymentMethods = mode === "subscription" ? ["card", "paypal"] : ["card", "mb_way", "paypal"];
 
-	const sessionParams: any = {
-      payment_method_types: paymentMethodTypes,
+    const params: any = {
+      payment_method_types: paymentMethods,
       line_items: lineItems,
       mode,
-      customer_email: userEmail,
+      customer_email: user.email,
+      client_reference_id: user.id,
       metadata,
-      success_url: `${origin}/?payment=success`,
-      cancel_url: `${origin}/?payment=cancelled`,
+      success_url: `${siteUrl}/?payment=success`,
+      cancel_url: `${siteUrl}/?payment=cancelled`,
     };
 
     if (mode === "subscription") {
-      sessionParams.subscription_data = { metadata };
+      params.subscription_data = { metadata };
+    } else {
+      params.customer_creation = "always";
+      params.payment_intent_data = { metadata };
     }
 
-    const session = await stripe.checkout.sessions.create(sessionParams);
-
-    return NextResponse.json({ url: session.url });  } catch (error: any) {
-    console.error("Erro ao criar checkout Stripe:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const session = await stripe.checkout.sessions.create(params);
+    return NextResponse.json({ url: session.url });
+  } catch (err) {
+    return handleApiError(err, "checkout");
   }
 }

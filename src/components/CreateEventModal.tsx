@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { authJson } from "@/lib/apiClient";
+import { suggestedCreditsForPrice } from "@/lib/pricing";
 import { useLanguage } from "@/context/LanguageContext";
 import {
   X,
@@ -18,14 +19,14 @@ import {
 interface CreateEventModalProps {
   isOpen: boolean;
   onClose: () => void;
-  providerId: string;
+  /** Já não é necessário: o servidor deduz o prestador do token. Mantido por compatibilidade. */
+  providerId?: string;
   onEventCreated?: () => void;
 }
 
 export default function CreateEventModal({
   isOpen,
   onClose,
-  providerId,
   onEventCreated,
 }: CreateEventModalProps) {
   const { lang } = useLanguage();
@@ -56,7 +57,7 @@ export default function CreateEventModal({
 
   function handlePriceChange(val: number) {
     setPriceEur(val);
-    setCreditsCost(Math.max(1, Math.round(val / 5)));
+    setCreditsCost(suggestedCreditsForPrice(val));
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -84,34 +85,34 @@ export default function CreateEventModal({
     try {
       setLoading(true);
 
+      // Recorrência semanal calculada no cliente (mantém a hora local nas mudanças de hora).
       const baseDate = new Date(startTime);
       const totalOccurrences = isRecurring ? repeatWeeks : 1;
-      const recordsToInsert = [];
-
+      const startTimes: string[] = [];
       for (let i = 0; i < totalOccurrences; i++) {
         const occurrenceDate = new Date(baseDate);
         occurrenceDate.setDate(baseDate.getDate() + i * 7);
-
-        recordsToInsert.push({
-          provider_id: providerId,
-          title_pt: titlePt || titleEn,
-          title_en: titleEn || titlePt,
-          category,
-          pricing_model: pricingModel,
-          price_eur: Number(priceEur),
-          credits_cost: pricingModel === "direct_only" ? null : Number(creditsCost),
-          max_spots: Number(maxSpots),
-          duration_minutes: Number(durationMinutes),
-          start_time: occurrenceDate.toISOString(),
-          location_name: locationName,
-          what_to_bring: whatToBring,
-          description_pt: descPt,
-          description_en: descEn,
-        });
+        startTimes.push(occurrenceDate.toISOString());
       }
 
-      const { error } = await supabase.from("events").insert(recordsToInsert);
-      if (error) throw error;
+      // O servidor valida tudo, identifica o prestador pelo token e exige perfil verificado.
+      await authJson("/api/provider/events", {
+        body: {
+          titlePt,
+          titleEn,
+          category,
+          pricingModel,
+          priceEur: Number(priceEur),
+          creditsCost: pricingModel === "direct_only" ? null : Number(creditsCost),
+          maxSpots: Number(maxSpots),
+          durationMinutes: Number(durationMinutes),
+          startTimes,
+          locationName,
+          whatToBring,
+          descriptionPt: descPt,
+          descriptionEn: descEn,
+        },
+      });
 
       // Limpar formulário
       setTitlePt("");

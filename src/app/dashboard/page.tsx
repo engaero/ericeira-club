@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { authJson } from "@/lib/apiClient";
 import { 
   ArrowLeft, Calendar, MapPin, CheckCircle2, 
   CreditCard, ShieldCheck, XCircle, LogOut, User, 
@@ -44,7 +45,7 @@ export default function UserDashboard() {
       .from("profiles")
       .select("*")
       .eq("id", session.user.id)
-      .single();
+      .maybeSingle();
 
     if (profileData) {
       setProfile(profileData);
@@ -75,19 +76,12 @@ export default function UserDashboard() {
 
     if (bookingsData) setBookings(bookingsData);
 
-    // 3. Carregar Histórico do Stripe
-    if (session.user.email) {
-      try {
-        const res = await fetch("/api/user/invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: session.user.email }),
-        });
-        const resData = await res.json();
-        if (resData.receipts) setReceipts(resData.receipts);
-      } catch (e) {
-        console.error("Erro ao carregar recibos:", e);
-      }
+    // 3. Carregar Histórico do Stripe (o servidor identifica o utilizador pelo token)
+    try {
+      const resData = await authJson<{ receipts?: any[] }>("/api/user/invoices", { method: "GET" });
+      if (resData.receipts) setReceipts(resData.receipts);
+    } catch (e) {
+      console.error("Erro ao carregar recibos:", e);
     }
 
     setLoading(false);
@@ -99,23 +93,12 @@ export default function UserDashboard() {
     setProfileSuccessMsg("");
 
     try {
-      const res = await fetch("/api/user/profile", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUser.id,
-          fullName,
-          phone,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      await authJson("/api/user/profile", { body: { fullName, phone } });
 
       setProfileSuccessMsg("Dados atualizados com sucesso!");
       loadUserData();
     } catch (err: any) {
-      alert(err.message || "Erro ao guardar dados.");
+      setActionNotice(err.message || "Erro ao guardar dados.");
     } finally {
       setSavingProfile(false);
     }
@@ -139,16 +122,14 @@ export default function UserDashboard() {
     }
 
     try {
-      const res = await fetch("/api/bookings/cancel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: booking.id, userId: currentUser.id }),
-      });
+      const data = await authJson<{ result?: { refunded?: boolean; stripeRefundFailed?: boolean } }>(
+        "/api/bookings/cancel",
+        { body: { bookingId: booking.id } }
+      );
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      if (data.result?.refunded) {
+      if (data.result?.stripeRefundFailed) {
+        setActionNotice("Reserva cancelada, mas o reembolso do pagamento não pôde ser processado automaticamente. A nossa equipa foi avisada e trata disto em breve.");
+      } else if (data.result?.refunded) {
         setActionNotice("Reserva cancelada com sucesso! O teu crédito foi devolvido ao saldo.");
       } else {
         setActionNotice("Reserva cancelada. Conforme a política de 12h, a vaga foi libertada sem estorno de créditos.");
@@ -156,7 +137,7 @@ export default function UserDashboard() {
 
       loadUserData();
     } catch (err: any) {
-      alert(err.message || "Erro ao cancelar a reserva.");
+      setActionNotice(err.message || "Erro ao cancelar a reserva.");
     }
   }
 

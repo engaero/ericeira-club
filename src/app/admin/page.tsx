@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { authJson } from "@/lib/apiClient";
 import { 
   ArrowLeft, CheckCircle2, ShieldAlert, UserCheck, 
   Clock, Banknote, SendHorizontal 
@@ -55,14 +56,7 @@ export default function AdminPage() {
     if (!uid) return;
 
     try {
-      const res = await fetch("/api/admin/financial-summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adminUserId: uid }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await authJson<{ providers?: any[]; balances?: Record<string, number> }>("/api/admin/financial-summary");
 
       if (data.providers) {
         setPendingProviders(data.providers.filter((p: any) => !p.verified));
@@ -79,30 +73,23 @@ export default function AdminPage() {
 
   async function handleApprove(providerId: string) {
     try {
-      const res = await fetch("/api/admin/approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ providerId, adminUserId: currentUserId }),
-      });
-
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error);
+      await authJson("/api/admin/approve", { body: { providerId } });
 
       setMsg("Instrutor aprovado com sucesso!");
       loadData();
     } catch (err: any) {
-      alert(err.message || "Erro ao aprovar.");
+      setMsg(err.message || "Erro ao aprovar.");
     }
   }
 
   async function handleRecordPayout(provider: any, amount: number) {
     if (amount <= 0) {
-      alert("Não existem valores pendentes para este prestador.");
+      setMsg("Não existem valores pendentes para este prestador.");
       return;
     }
 
     if (!provider.iban) {
-      alert("Este prestador ainda não preencheu o IBAN.");
+      setMsg("Este prestador ainda não preencheu o IBAN.");
       return;
     }
 
@@ -114,26 +101,20 @@ export default function AdminPage() {
     if (!ref) return;
 
     try {
-      const res = await fetch("/api/admin/payouts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          adminUserId: currentUserId,
+      await authJson("/api/admin/payouts", {
+        body: {
           providerId: provider.id,
           amountEur: amount,
           periodStart: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
           periodEnd: new Date().toISOString(),
           bankReference: ref,
-        }),
+        },
       });
-
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.error);
 
       setMsg(`Transferência de ${amount.toFixed(2)}€ registada com sucesso!`);
       loadData();
     } catch (err: any) {
-      alert(err.message || "Erro ao registar transferência.");
+      setMsg(err.message || "Erro ao registar transferência.");
     }
   }
 

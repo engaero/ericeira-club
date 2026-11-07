@@ -153,15 +153,26 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [lang, setLangState] = useState<Language>("pt");
 
   useEffect(() => {
-    const saved = localStorage.getItem("ericeira_lang") as Language;
-    if (saved && (saved === "pt" || saved === "en")) {
+    let saved: Language | null = null;
+    try {
+      saved = localStorage.getItem("ericeira_lang") as Language | null;
+    } catch {
+      /* storage indisponível */
+    }
+    if (saved === "pt" || saved === "en") {
       setLangState(saved);
+      document.documentElement.lang = saved;
     }
   }, []);
 
   function setLang(newLang: Language) {
     setLangState(newLang);
-    localStorage.setItem("ericeira_lang", newLang);
+    document.documentElement.lang = newLang;
+    try {
+      localStorage.setItem("ericeira_lang", newLang);
+    } catch {
+      /* modo privado / storage bloqueado: o idioma só dura esta sessão */
+    }
   }
 
   function t(key: string): string {

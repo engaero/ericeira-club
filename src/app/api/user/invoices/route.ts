@@ -1,44 +1,46 @@
 import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { handleApiError, requireUser } from "@/lib/auth";
 
-export async function POST(request: Request) {
+async function handler(request: Request) {
   try {
-    const { email } = await request.json();
+    const user = await requireUser(request);
 
-    if (!email) {
-      return NextResponse.json({ error: "E-mail em falta." }, { status: 400 });
+    // Customer guardado pelo webhook; fallback por e-mail (verificado, vindo do token — nunca do corpo).
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    let customerIds: string[] = profile?.stripe_customer_id ? [profile.stripe_customer_id] : [];
+    if (customerIds.length === 0 && user.email) {
+      const customers = await stripe.customers.list({ email: user.email, limit: 5 });
+      customerIds = customers.data.map((c) => c.id);
     }
 
-    // 1. Procurar cliente Stripe associado ao email
-    const customers = await stripe.customers.list({
-      email: email,
-      limit: 1,
-    });
+    const charges = await Promise.all(
+      customerIds.map((customer) => stripe.charges.list({ customer, limit: 10 }))
+    );
 
-    if (customers.data.length === 0) {
-      return NextResponse.json({ invoices: [] });
-    }
-
-    const customerId = customers.data[0].id;
-
-    // 2. Procurar pagamentos / sessões concluídas
-    const charges = await stripe.charges.list({
-      customer: customerId,
-      limit: 10,
-    });
-
-    const receipts = charges.data.map((c) => ({
-      id: c.id,
-      amountEur: (c.amount / 100).toFixed(2),
-      date: new Date(c.created * 1000).toISOString(),
-      receiptUrl: c.receipt_url,
-      description: c.description || "Compra Ericeira Hub",
-      status: c.status,
-    }));
+    const receipts = charges
+      .flatMap((c) => c.data)
+      .sort((a, b) => b.created - a.created)
+      .slice(0, 10)
+      .map((c) => ({
+        id: c.id,
+        amountEur: (c.amount / 100).toFixed(2),
+        date: new Date(c.created * 1000).toISOString(),
+        receiptUrl: c.receipt_url,
+        description: c.description || "Compra Ericeira Hub",
+        status: c.status,
+      }));
 
     return NextResponse.json({ receipts });
-  } catch (err: any) {
-    console.error("[Stripe Invoices Error]:", err);
-    return NextResponse.json({ error: err.message || "Erro ao obter recibos." }, { status: 500 });
+  } catch (err) {
+    return handleApiError(err, "user/invoices");
   }
 }
+
+export { handler as GET, handler as POST };

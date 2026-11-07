@@ -1,72 +1,75 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { escapeHtml, sendTelegramNotification } from "@/lib/telegram";
+import { ApiError, handleApiError, readJson } from "@/lib/auth";
+import { clientIp, rateLimit } from "@/lib/rateLimit";
+import { cleanString, isEmail, isUuid, toNumber } from "@/lib/validators";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const {
-      providerId,
-      clientName,
-      clientEmail,
-      clientPhone,
-      companyName,
-      projectDescription,
-      estimatedBudgetEur,
-    } = body;
+    if (!rateLimit(`b2b:${clientIp(request)}`, 5, 60 * 60 * 1000)) {
+      throw new ApiError(429, "Demasiados pedidos. Tenta novamente mais tarde.", "rate_limited");
+    }
 
-    if (!providerId || !clientName || !clientEmail || !projectDescription) {
-      return NextResponse.json(
-        { error: "Preenche os campos obrigatórios (Nome, E-mail e Descrição)." },
-        { status: 400 }
+    const body = await readJson(request);
+
+    // Campo isco (honeypot): humanos não o preenchem. Respondemos "ok" para não ensinar o bot.
+    if (typeof body.website === "string" && body.website.trim() !== "") {
+      return NextResponse.json({ success: true });
+    }
+
+    const providerId = body.providerId;
+    const clientName = cleanString(body.clientName, 120);
+    const projectDescription = cleanString(body.projectDescription, 3000);
+    const companyName = body.companyName ? cleanString(body.companyName, 160) : null;
+    const clientPhone = body.clientPhone ? cleanString(body.clientPhone, 30) : null;
+
+    if (!isUuid(providerId) || !clientName || !isEmail(body.clientEmail) || !projectDescription) {
+      throw new ApiError(400, "Preenche os campos obrigatórios (Nome, E-mail e Descrição).", "invalid_inquiry");
+    }
+    const clientEmail = body.clientEmail;
+
+    let budget: number | null = null;
+    if (body.estimatedBudgetEur !== undefined && body.estimatedBudgetEur !== null && body.estimatedBudgetEur !== "") {
+      budget = toNumber(body.estimatedBudgetEur);
+      if (budget === null || budget < 0 || budget > 10_000_000) {
+        throw new ApiError(400, "Orçamento inválido.", "invalid_budget");
+      }
+    }
+
+    // Só prestadores verificados recebem pedidos.
+    const { data: provider } = await supabaseAdmin
+      .from("providers")
+      .select("name, telegram_chat_id, verified")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (!provider || !provider.verified) throw new ApiError(404, "Prestador não encontrado.", "provider_not_found");
+
+    const { error: insertError } = await supabaseAdmin.from("b2b_inquiries").insert({
+      provider_id: providerId,
+      client_name: clientName,
+      client_email: clientEmail,
+      client_phone: clientPhone,
+      company_name: companyName,
+      project_description: projectDescription,
+      estimated_budget_eur: budget,
+    });
+    if (insertError) throw insertError;
+
+    if (provider.telegram_chat_id) {
+      await sendTelegramNotification(
+        provider.telegram_chat_id,
+        `💼 <b>Novo Pedido B2B no Ericeira Hub!</b>\n\n` +
+          `👤 <b>Cliente:</b> ${escapeHtml(clientName)}${companyName ? ` (${escapeHtml(companyName)})` : ""}\n` +
+          `✉️ <b>E-mail:</b> ${escapeHtml(clientEmail)}${clientPhone ? `\n📞 <b>Tel:</b> ${escapeHtml(clientPhone)}` : ""}\n` +
+          `💰 <b>Orçamento Est.:</b> ${budget !== null ? `${budget}€` : "A combinar"}\n\n` +
+          `📝 <b>Descrição do Projeto:</b>\n<i>${escapeHtml(projectDescription)}</i>\n\n` +
+          `<i>Responde diretamente ao cliente através dos contactos fornecidos.</i>`
       );
     }
 
-    // 1. Gravar pedido na base de dados
-    const { data: inquiry, error: insertError } = await supabaseAdmin
-      .from("b2b_inquiries")
-      .insert({
-        provider_id: providerId,
-        client_name: clientName,
-        client_email: clientEmail,
-        client_phone: clientPhone || null,
-        company_name: companyName || null,
-        project_description: projectDescription,
-        estimated_budget_eur: estimatedBudgetEur ? parseFloat(estimatedBudgetEur) : null,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error("[B2B Inquiry] Erro ao gravar:", insertError);
-      return NextResponse.json({ error: insertError.message }, { status: 400 });
-    }
-
-    // 2. Procurar dados do freelancer para notificar via Telegram
-    const { data: provider } = await supabaseAdmin
-      .from("providers")
-      .select("name, telegram_chat_id")
-      .eq("id", providerId)
-      .single();
-
-    if (provider?.telegram_chat_id) {
-      const budgetText = estimatedBudgetEur ? `${estimatedBudgetEur}€` : "A combinar";
-      const companyText = companyName ? ` (${companyName})` : "";
-      const phoneText = clientPhone ? `\n📞 *Tel:* ${clientPhone}` : "";
-
-      const message =
-        `💼 *Novo Pedido B2B no Ericeira Hub!*\n\n` +
-        `👤 *Cliente:* ${clientName}${companyText}\n` +
-        `✉️ *E-mail:* ${clientEmail}${phoneText}\n` +
-        `💰 *Orçamento Est.:* ${budgetText}\n\n` +
-        `📝 *Descrição do Projeto:*\n_${projectDescription}_\n\n` +
-        `_Responde diretamente ao cliente através dos contactos fornecidos._`;
-
-      await sendTelegramNotification(provider.telegram_chat_id, message);
-    }
-
-    return NextResponse.json({ success: true, inquiry });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || "Erro interno." }, { status: 500 });
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    return handleApiError(err, "b2b/inquiry");
   }
 }

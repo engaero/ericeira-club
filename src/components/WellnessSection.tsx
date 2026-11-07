@@ -4,6 +4,8 @@ import { useState, useMemo, useEffect } from "react";
 import { Search, MapPin, Calendar, Filter, X, Users, ExternalLink, Info } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import EventDetailModal from "@/components/EventDetailModal";
+import Image from "next/image";
+import { CATEGORY_COVERS } from "@/lib/categories";
 
 interface Props {
   events: any[];
@@ -12,17 +14,6 @@ interface Props {
   onBuySingleTicket: (event: any) => void;
 }
 
-const CATEGORY_IMAGES: Record<string, string> = {
-  surf: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=800&q=80",
-  wellness: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=800&q=80",
-  breathwork: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=800&q=80",
-  crafts: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=800&q=80",
-  wine: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=800&q=80",
-  coffee: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=800&q=80",
-  yoga: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=800&q=80",
-  skate: "https://images.unsplash.com/photo-1564982752979-3f7bc974d29a?auto=format&fit=crop&w=800&q=80",
-  ple: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=800&q=80",
-};
 
 export default function WellnessSection({
   events,
@@ -241,7 +232,7 @@ export default function WellnessSection({
             });
 
             const titleDisplay = lang === "pt" ? (ev.title_pt || ev.title_en) : (ev.title_en || ev.title_pt);
-            const coverImage = CATEGORY_IMAGES[ev.category] || CATEGORY_IMAGES.wellness;
+            const coverImage = CATEGORY_COVERS[ev.category] || CATEGORY_COVERS.wellness;
             const creditsNeeded = ev.credits_cost || Math.round(ev.price_eur / 5);
 
             return (
@@ -255,10 +246,12 @@ export default function WellnessSection({
                     onClick={() => setActiveModalEvent(ev)}
                     className="relative h-56 w-full overflow-hidden bg-stone-200 cursor-pointer"
                   >
-                    <img
+                    <Image
                       src={coverImage}
                       alt={titleDisplay}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-700"
+                      fill
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                      className="object-cover group-hover:scale-105 transition duration-700"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
 

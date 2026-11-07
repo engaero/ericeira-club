@@ -1,80 +1,60 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { sendTelegramNotification } from "@/lib/telegram";
+import { ApiError, handleApiError, readJson, requireUser, throwFromRpcError } from "@/lib/auth";
+import { escapeHtml, sendTelegramNotification } from "@/lib/telegram";
+import { isUuid } from "@/lib/validators";
 
 export async function POST(request: Request) {
   try {
-    const { eventId, userId } = await request.json();
+    const user = await requireUser(request);
+    const body = await readJson(request);
+    if (!isUuid(body.eventId)) throw new ApiError(400, "Sessão inválida.", "invalid_event");
+    const eventId = body.eventId;
 
-    if (!eventId || !userId) {
-      return NextResponse.json({ error: "Parâmetros em falta." }, { status: 400 });
-    }
-
-    // 1. Executa a reserva atómica na base de dados
-    const { data, error } = await supabase.rpc("book_with_credits", {
+    // Reserva atómica (locks + validações dentro da função SQL; só o servidor a pode invocar).
+    const { data, error } = await supabaseAdmin.rpc("app_book_with_credits", {
       p_event_id: eventId,
-      p_user_id: userId,
+      p_user_id: user.id,
     });
+    throwFromRpcError(error);
 
-    // 2. Intercetar erro da RPC (incluindo chave duplicada se já estiver inscrito)
-    if (error) {
-      if (error.message.includes("bookings_event_id_user_id_key")) {
-        return NextResponse.json(
-          { error: "Já tens uma vaga confirmada nesta aula." },
-          { status: 400 }
+    // Notificação ao instrutor — nunca pode transformar uma reserva feita em erro.
+    try {
+      const { data: ev } = await supabaseAdmin
+        .from("events")
+        .select("title_pt, title_en, start_time, max_spots, booked_spots, providers(name, telegram_chat_id)")
+        .eq("id", eventId)
+        .maybeSingle();
+      const provider = ev?.providers as unknown as { telegram_chat_id?: string | null } | null;
+
+      if (ev && provider?.telegram_chat_id) {
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        const dateFormatted = new Date(ev.start_time).toLocaleString("pt-PT", {
+          weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+          timeZone: "Europe/Lisbon",
+        });
+
+        await sendTelegramNotification(
+          provider.telegram_chat_id,
+          `🌊 <b>Nova Reserva no Ericeira Hub!</b>\n\n` +
+            `👤 <b>Aluno:</b> ${escapeHtml(profile?.full_name || profile?.email || "Novo aluno")}\n` +
+            `🗓️ <b>Aula:</b> ${escapeHtml(ev.title_pt || ev.title_en)}\n` +
+            `⏰ <b>Horário:</b> ${escapeHtml(dateFormatted)}\n` +
+            `🎟️ <b>Vagas restantes:</b> ${Math.max(0, ev.max_spots - ev.booked_spots)} de ${ev.max_spots}\n\n` +
+            `<i>Reserva confirmada via Ericeira Pass (créditos).</i>`
         );
       }
-      return NextResponse.json({ error: error.message }, { status: 400 });
-    }
-
-    // 3. Procurar dados do evento e instrutor para a notificação
-    const { data: eventData } = await supabaseAdmin
-      .from("events")
-      .select("title_en, start_time, max_spots, booked_spots, providers(name, telegram_chat_id)")
-      .eq("id", eventId)
-      .single();
-
-    // 4. Procurar nome/email do aluno
-    const { data: userData } = await supabaseAdmin
-      .from("profiles")
-      .select("full_name, email")
-      .eq("id", userId)
-      .single();
-
-    const providerData = eventData?.providers as any;
-
-    if (providerData?.telegram_chat_id && eventData) {
-      const spotsRemaining = eventData.max_spots - eventData.booked_spots;
-      const dateFormatted = new Date(eventData.start_time).toLocaleString("pt-PT", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-
-      const studentName = userData?.full_name || userData?.email || "Novo Aluno";
-
-      const message =
-        `🌊 *Nova Reserva no Ericeira Hub!*\n\n` +
-        `👤 *Aluno:* ${studentName}\n` +
-        `🗓️ *Aula:* ${eventData.title_en}\n` +
-        `⏰ *Horário:* ${dateFormatted}\n` +
-        `🎟️ *Vagas restantes:* ${spotsRemaining} de ${eventData.max_spots}\n\n` +
-        `_Reserva confirmada via Ericeira Pass (créditos)._`;
-
-      await sendTelegramNotification(providerData.telegram_chat_id, message);
+    } catch (notifyErr) {
+      console.error("[Bookings] Falha na notificação (reserva já confirmada):", notifyErr);
     }
 
     return NextResponse.json({ success: true, result: data });
-  } catch (err: any) {
-    if (err?.message?.includes("bookings_event_id_user_id_key")) {
-      return NextResponse.json(
-        { error: "Já tens uma vaga confirmada nesta aula." },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json({ error: err.message || "Erro interno do servidor." }, { status: 500 });
+  } catch (err) {
+    return handleApiError(err, "bookings");
   }
 }

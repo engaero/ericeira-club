@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/context/LanguageContext";
 import EventDetailModal from "@/components/EventDetailModal";
+import PackagesModal from "@/components/PackagesModal";
 import Image from "next/image";
 import { authJson } from "@/lib/apiClient";
 import {
@@ -38,11 +39,70 @@ export default function HomePage() {
   const [user, setUser] = useState<any | null>(null);
   const [profile, setProfile] = useState<any | null>(null);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [showPackages, setShowPackages] = useState(false);
 
   useEffect(() => {
     loadUser();
     loadEvents();
   }, []);
+
+  // Retorno do Stripe (?payment=success|cancelled): mostra o resultado e espera pelo webhook.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    if (!payment) return;
+
+    window.history.replaceState({}, "", window.location.pathname);
+
+    if (payment === "cancelled") {
+      setFeedback({
+        type: "error",
+        message: lang === "pt" ? "Pagamento cancelado. Não foi cobrado nada." : "Payment cancelled. You were not charged.",
+      });
+      return;
+    }
+
+    setFeedback({
+      type: "success",
+      message:
+        lang === "pt" ? "Pagamento recebido! A confirmar a tua compra…" : "Payment received! Confirming your purchase…",
+    });
+
+    // O webhook pode demorar alguns segundos (MB WAY, etc.): refresca saldo e sessões algumas vezes.
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      loadUser();
+      loadEvents();
+      if (attempts >= 6) clearInterval(timer);
+    }, 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function errorMessage(err: unknown): string {
+    const e = err as { code?: string; message?: string };
+    const pt: Record<string, string> = {
+      unauthenticated: "Inicia sessão para continuar.",
+      insufficient_credits: "Saldo de créditos insuficiente.",
+      credits_expired: "Os teus créditos expiraram.",
+      event_full: "Esta sessão está esgotada.",
+      event_started: "Esta sessão já começou.",
+      already_booked: "Já tens uma vaga confirmada nesta aula.",
+      direct_only_event: "Esta sessão só aceita pagamento direto em euros.",
+    };
+    const en: Record<string, string> = {
+      unauthenticated: "Please sign in to continue.",
+      insufficient_credits: "Not enough credits.",
+      credits_expired: "Your credits have expired.",
+      event_full: "This session is sold out.",
+      event_started: "This session has already started.",
+      already_booked: "You already have a confirmed spot in this class.",
+      direct_only_event: "This session only accepts direct payment in euros.",
+    };
+    const dict = lang === "pt" ? pt : en;
+    return (e.code && dict[e.code]) || e.message || (lang === "pt" ? "Ocorreu um erro." : "Something went wrong.");
+  }
 
   async function loadUser() {
     const {
@@ -83,6 +143,7 @@ export default function HomePage() {
           duration_minutes,
           start_time,
           location_name,
+          google_maps_url,
           what_to_bring,
           image_url,
           providers (
@@ -119,10 +180,8 @@ export default function HomePage() {
     if (!eventId) return;
 
     try {
-      await authJson("/api/bookings", {
-        method: "POST",
-        body: JSON.stringify({ eventId, userId: user.id }),
-      });
+      // authJson já serializa o corpo e envia o token; o servidor deduz o utilizador do token.
+      await authJson("/api/bookings", { body: { eventId } });
 
       setFeedback({
         type: "success",
@@ -132,8 +191,8 @@ export default function HomePage() {
       setSelectedEvent(null);
       await loadEvents();
       await loadUser();
-    } catch (err: any) {
-      setFeedback({ type: "error", message: err.message || "Erro ao reservar." });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
     }
   }
 
@@ -151,29 +210,45 @@ export default function HomePage() {
     }
 
     const eventId = typeof eventOrId === "string" ? eventOrId : eventOrId?.id;
-    const finalPrice = priceEur ?? eventOrId?.price_eur;
-    const finalTitle = eventTitle ?? eventOrId?.title_pt ?? eventOrId?.title_en ?? "Aula";
 
     if (!eventId) return;
 
     try {
+      // Preço e título são lidos da base de dados pelo servidor — nunca enviar valores do cliente.
       const res = await authJson<{ url: string }>("/api/checkout", {
-        method: "POST",
-        body: JSON.stringify({
-          userId: user.id,
-          userEmail: user.email,
-          itemType: "single_ticket",
-          eventId,
-          eventTitle: finalTitle,
-          priceEur: finalPrice,
-        }),
+        body: { itemType: "single_ticket", eventId },
       });
 
       if (res?.url) {
         window.location.href = res.url;
       }
-    } catch (err: any) {
-      setFeedback({ type: "error", message: err.message || "Erro no checkout." });
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
+    }
+  }
+
+  // Compra de pacotes de créditos (Ericeira Pass)
+  async function handleBuyCreditPackage(packageId: string) {
+    if (!user) {
+      setFeedback({
+        type: "error",
+        message:
+          lang === "pt"
+            ? "Inicia sessão (botão no topo da página) para comprar créditos."
+            : "Please sign in (button at the top of the page) to buy credits.",
+      });
+      return;
+    }
+
+    try {
+      const res = await authJson<{ url: string }>("/api/checkout", {
+        body: { itemType: "credit_package", packageId },
+      });
+      if (res?.url) {
+        window.location.href = res.url;
+      }
+    } catch (err) {
+      setFeedback({ type: "error", message: errorMessage(err) });
     }
   }
 
@@ -260,6 +335,28 @@ export default function HomePage() {
               ? "Práticas de corpo & mente, artesanias manuais, experiências gastronómicas e eventos comunitários. Um único passe para aceder aos melhores estúdios da vila ou reserva direta de workshops especiais."
               : "Body & mind practices, artisan workshops, gastronomic tours and community gatherings. A single pass for the best local studios or direct bookings for special workshops."}
           </p>
+
+          <div className="pt-1">
+            <button
+              onClick={() => {
+                if (user) {
+                  setShowPackages(true);
+                } else {
+                  setFeedback({
+                    type: "error",
+                    message:
+                      lang === "pt"
+                        ? "Inicia sessão (botão no topo da página) para comprar créditos."
+                        : "Please sign in (button at the top of the page) to buy credits.",
+                  });
+                }
+              }}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider transition shadow-md cursor-pointer"
+            >
+              <Ticket className="w-4 h-4" />
+              {lang === "pt" ? "Comprar Créditos (Ericeira Pass)" : "Buy Credits (Ericeira Pass)"}
+            </button>
+          </div>
 
           {profile && (
             <div className="pt-2 flex items-center gap-3">
@@ -596,6 +693,13 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      {/* MODAL DE PACOTES DE CRÉDITOS */}
+      <PackagesModal
+        isOpen={showPackages}
+        onClose={() => setShowPackages(false)}
+        onSelectPackage={handleBuyCreditPackage}
+      />
 
       {/* MODAL DETALHE DO EVENTO / CHECKOUT */}
       {selectedEvent && (

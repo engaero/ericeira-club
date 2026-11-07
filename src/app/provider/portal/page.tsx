@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { authJson } from "@/lib/apiClient";
+import CreateEventModal from "@/components/CreateEventModal";
 import { useLanguage } from "@/context/LanguageContext";
 import Link from "next/link";
 import {
@@ -25,22 +27,7 @@ export default function ProviderPortalPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [creating, setCreating] = useState(false);
-
-  // Campos do formulário de nova sessão
-  const [titlePt, setTitlePt] = useState("");
-  const [titleEn, setTitleEn] = useState("");
-  const [category, setCategory] = useState("wellness");
-  const [pricingModel, setPricingModel] = useState<"credits_allowed" | "direct_only">("credits_allowed");
-  const [priceEur, setPriceEur] = useState<number>(20);
-  const [creditsCost, setCreditsCost] = useState<number>(4);
-  const [maxSpots, setMaxSpots] = useState<number>(10);
-  const [durationMinutes, setDurationMinutes] = useState<number>(60);
-  const [startTime, setStartTime] = useState("");
-  const [locationName, setLocationName] = useState("Ericeira");
-  const [whatToBring, setWhatToBring] = useState("");
-  const [descPt, setDescPt] = useState("");
-  const [descEn, setDescEn] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadProviderData();
@@ -59,13 +46,8 @@ export default function ProviderPortalPage() {
       }
 
       // 1. Procurar perfil de anfitrião/prestador associado ao user
-      const { data: prov, error: provError } = await supabase
-        .from("providers")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
-
-      if (provError) throw provError;
+      // Dados completos (incl. IBAN/Telegram) só chegam pelo servidor: o browser já não os lê diretamente.
+      const { provider: prov } = await authJson<{ provider: any | null }>("/api/provider/me");
 
       if (prov) {
         setProvider(prov);
@@ -101,78 +83,6 @@ export default function ProviderPortalPage() {
     }
   }
 
-  // Auto-calcular créditos recomendados ao mudar o preço em Euros
-  function handlePriceChange(value: number) {
-    setPriceEur(value);
-    setCreditsCost(Math.max(1, Math.round(value / 5)));
-  }
-
-  // Criar nova sessão/workshop
-  async function handleCreateEvent(e: React.FormEvent) {
-    e.preventDefault();
-    if (!provider) return;
-
-    if (!titlePt && !titleEn) {
-      setFeedback({
-        type: "error",
-        message: lang === "pt" ? "Preenche pelo menos um título para a sessão." : "Please provide a title.",
-      });
-      return;
-    }
-
-    if (!startTime) {
-      setFeedback({
-        type: "error",
-        message: lang === "pt" ? "Indica o dia e hora de início." : "Please indicate the date and time.",
-      });
-      return;
-    }
-
-    try {
-      setCreating(true);
-
-      const payload = {
-        provider_id: provider.id,
-        title_pt: titlePt || titleEn,
-        title_en: titleEn || titlePt,
-        category,
-        pricing_model: pricingModel,
-        price_eur: priceEur,
-        credits_cost: pricingModel === "direct_only" ? null : creditsCost,
-        max_spots: maxSpots,
-        duration_minutes: durationMinutes,
-        start_time: new Date(startTime).toISOString(),
-        location_name: locationName,
-        what_to_bring: whatToBring,
-        description_pt: descPt,
-        description_en: descEn,
-      };
-
-      const { data, error } = await supabase.from("events").insert([payload]).select().single();
-      if (error) throw error;
-
-      setFeedback({
-        type: "success",
-        message: lang === "pt" ? "Sessão agendada com sucesso no Ericeira Hub!" : "Session successfully published!",
-      });
-
-      // Limpar formulário
-      setTitlePt("");
-      setTitleEn("");
-      setStartTime("");
-      setWhatToBring("");
-      setDescPt("");
-      setDescEn("");
-
-      // Recarregar lista
-      setEvents((prev) => [...prev, data]);
-    } catch (err: any) {
-      setFeedback({ type: "error", message: err.message });
-    } finally {
-      setCreating(false);
-    }
-  }
-
   // Cancelar/remover sessão
   async function handleDeleteEvent(eventId: string) {
     const confirmDelete = window.confirm(
@@ -183,8 +93,7 @@ export default function ProviderPortalPage() {
     if (!confirmDelete) return;
 
     try {
-      const { error } = await supabase.from("events").delete().eq("id", eventId);
-      if (error) throw error;
+      await authJson("/api/provider/events", { method: "DELETE", body: { eventId } });
 
       setEvents((prev) => prev.filter((e) => e.id !== eventId));
       setFeedback({
@@ -345,8 +254,8 @@ export default function ProviderPortalPage() {
 
       {/* CONTEÚDO PRINCIPAL: CRIAR SESSÃO & LISTAGEM */}
       <section className="max-w-7xl mx-auto px-4 sm:px-8 grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4">
-        {/* FORMULÁRIO DE NOVA SESSÃO (5 COLUNAS) */}
-        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/90 shadow-sm space-y-5">
+        {/* NOVA SESSÃO (5 COLUNAS) — formulário no CreateEventModal (com repetição semanal) */}
+        <div className="lg:col-span-5 bg-white rounded-3xl p-6 sm:p-7 border border-stone-200/90 shadow-sm space-y-5 self-start">
           <div className="space-y-1">
             <h2 className="text-lg font-black text-stone-900 flex items-center gap-2">
               <PlusCircle className="w-5 h-5 text-orange-600" />
@@ -354,207 +263,26 @@ export default function ProviderPortalPage() {
             </h2>
             <p className="text-xs text-stone-500">
               {lang === "pt"
-                ? "Configura o horário, a tipologia de produto e o modelo de pagamento."
-                : "Set schedule, product category and pricing structure."}
+                ? "Configura o horário, o preço e o modelo de pagamento. Podes repetir a sessão todas as semanas."
+                : "Set schedule, price and payment model. You can repeat the session every week."}
             </p>
           </div>
 
-          <form onSubmit={handleCreateEvent} className="space-y-4 text-xs font-semibold text-stone-700">
-            {/* Título PT */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Título (Português)" : "Title (Portuguese)"}</label>
-              <input
-                type="text"
-                placeholder="Ex: Cerâmica Manual - Introdução à Roda"
-                value={titlePt}
-                onChange={(e) => setTitlePt(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-              />
-            </div>
+          <button
+            onClick={() => setShowCreateModal(true)}
+            disabled={!provider?.verified}
+            className="w-full py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {lang === "pt" ? "Nova Sessão" : "New Session"}
+          </button>
 
-            {/* Título EN */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Título (Inglês)" : "Title (English)"}</label>
-              <input
-                type="text"
-                placeholder="Ex: Wheel Throwing Pottery Workshop"
-                value={titleEn}
-                onChange={(e) => setTitleEn(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-              />
-            </div>
-
-            {/* Categoria */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Categoria / Eixo Temático" : "Category / Strategic Axis"}</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white"
-              >
-                <optgroup label="Corpo & Mente">
-                  <option value="wellness">Wellness & Recuperação</option>
-                  <option value="yoga">Yoga & Práticas Somáticas</option>
-                  <option value="breathwork">Breathwork & Ice Bath</option>
-                  <option value="surf">Surf Conditioning & Treino</option>
-                </optgroup>
-                <optgroup label="Artes & Oficinas">
-                  <option value="crafts">Oficinas Manuais / Crafts</option>
-                  <option value="ceramics">Cerâmica</option>
-                </optgroup>
-                <optgroup label="Sabor & Tradição">
-                  <option value="wine">Vinho & Degustação</option>
-                  <option value="coffee">Café Especial / Cupping</option>
-                </optgroup>
-                <optgroup label="Línguas & Social">
-                  <option value="ple">Português Língua Estrangeira</option>
-                  <option value="social">Encontros Comunitários</option>
-                </optgroup>
-              </select>
-            </div>
-
-            {/* MODELO DE PAGAMENTO (REGULAR VS DIRECT ONLY) */}
-            <div className="space-y-1 p-3.5 bg-stone-50 rounded-2xl border border-stone-200/80">
-              <label className="text-stone-900 font-extrabold flex items-center justify-between">
-                <span>{lang === "pt" ? "Modelo de Pagamento" : "Billing Model"}</span>
-                {pricingModel === "direct_only" && (
-                  <span className="text-[10px] bg-amber-200 text-amber-950 px-2 py-0.5 rounded-full font-black uppercase">
-                    Workshop Especial
-                  </span>
-                )}
-              </label>
-
-              <select
-                value={pricingModel}
-                onChange={(e) => setPricingModel(e.target.value as any)}
-                className="w-full px-3 py-2 rounded-xl border border-stone-300 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white mt-1"
-              >
-                <option value="credits_allowed">
-                  Aula Regular (Permite Ericeira Pass ou Avulso)
-                </option>
-                <option value="direct_only">
-                  Workshop Especial (Apenas Pagamento Direto em €)
-                </option>
-              </select>
-
-              <p className="text-[11px] text-stone-500 font-normal leading-relaxed pt-1">
-                {pricingModel === "direct_only"
-                  ? "Recomendado para workshops de cerâmica, tours e tickets acima de 40€. Os utilizadores pagam em Euros e não esgotam a bolsa de créditos regulares."
-                  : "Os alunos podem usar créditos do passe (recebes 4,00€ por crédito consumido) ou comprar avulso."}
-              </p>
-            </div>
-
-            {/* PREÇO E CRÉDITOS */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label>{lang === "pt" ? "Preço de Balcão (€)" : "Ticket Price (€)"}</label>
-                <input
-                  type="number"
-                  min={5}
-                  max={500}
-                  value={priceEur}
-                  onChange={(e) => handlePriceChange(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label>
-                  {pricingModel === "direct_only" ? "Créditos (Desativado)" : "Custo em Créditos"}
-                </label>
-                <input
-                  type="number"
-                  disabled={pricingModel === "direct_only"}
-                  value={pricingModel === "direct_only" ? 0 : creditsCost}
-                  onChange={(e) => setCreditsCost(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs disabled:bg-stone-100 disabled:text-stone-400"
-                />
-              </div>
-            </div>
-
-            {/* VAGAS E DURAÇÃO */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label>{lang === "pt" ? "Vagas Máximas" : "Max Spots"}</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={maxSpots}
-                  onChange={(e) => setMaxSpots(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label>{lang === "pt" ? "Duração (min)" : "Duration (min)"}</label>
-                <input
-                  type="number"
-                  step={15}
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-                />
-              </div>
-            </div>
-
-            {/* DATA E HORA DE INÍCIO */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Data e Hora de Início" : "Start Date & Time"}</label>
-              <input
-                type="datetime-local"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs bg-white"
-              />
-            </div>
-
-            {/* LOCALIZAÇÃO / MORADA */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Ponto de Encontro / Estúdio" : "Studio / Meeting Spot"}</label>
-              <input
-                type="text"
-                value={locationName}
-                onChange={(e) => setLocationName(e.target.value)}
-                placeholder="Ex: Rua do Limoeiro 12, Ericeira"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-              />
-            </div>
-
-            {/* O QUE LEVAR */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "O que levar / Requisitos" : "What to bring"}</label>
-              <input
-                type="text"
-                value={whatToBring}
-                onChange={(e) => setWhatToBring(e.target.value)}
-                placeholder="Ex: Roupa confortável que possa sujar, toalha..."
-                className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs"
-              />
-            </div>
-
-            {/* DESCRIÇÃO PT */}
-            <div className="space-y-1">
-              <label>{lang === "pt" ? "Descrição Resumida (PT)" : "Short Description (PT)"}</label>
-              <textarea
-                rows={2}
-                value={descPt}
-                onChange={(e) => setDescPt(e.target.value)}
-                placeholder="Explicita o foco da aula, material incluído e nível..."
-                className="w-full px-3.5 py-2 rounded-xl border border-stone-200 focus:outline-none focus:border-stone-900 text-stone-900 text-xs resize-none"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={creating}
-              className="w-full py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50"
-            >
-              {creating
-                ? (lang === "pt" ? "A agendar sessão..." : "Publishing...")
-                : (lang === "pt" ? "Publicar no Calendário do Hub" : "Publish to Hub Schedule")}
-            </button>
-          </form>
+          {!provider?.verified && (
+            <p className="text-[11px] text-amber-700">
+              {lang === "pt"
+                ? "O teu perfil ainda aguarda aprovação. Poderás publicar sessões assim que for verificado."
+                : "Your profile is pending approval. You'll be able to publish sessions once verified."}
+            </p>
+          )}
         </div>
 
         {/* LISTAGEM DE SESSÕES ATIVAS & INSCRITOS (7 COLUNAS) */}
@@ -662,6 +390,18 @@ export default function ProviderPortalPage() {
           )}
         </div>
       </section>
+
+      <CreateEventModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onEventCreated={() => {
+          setFeedback({
+            type: "success",
+            message: lang === "pt" ? "Sessão(ões) agendada(s) com sucesso no Ericeira Hub!" : "Session(s) successfully published!",
+          });
+          loadProviderData();
+        }}
+      />
     </div>
   );
 }

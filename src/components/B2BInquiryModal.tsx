@@ -16,6 +16,7 @@ export default function B2BInquiryModal({ isOpen, freelancer, onClose }: Props) 
   const [companyName, setCompanyName] = useState("");
   const [projectDescription, setProjectDescription] = useState("");
   const [estimatedBudget, setEstimatedBudget] = useState("");
+  const [website, setWebsite] = useState(""); // honeypot anti-spam (tem de ficar vazio)
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -40,6 +41,7 @@ export default function B2BInquiryModal({ isOpen, freelancer, onClose }: Props) 
           companyName,
           projectDescription,
           estimatedBudgetEur: estimatedBudget,
+          website,
         }),
       });
 
@@ -63,6 +65,7 @@ export default function B2BInquiryModal({ isOpen, freelancer, onClose }: Props) 
     setCompanyName("");
     setProjectDescription("");
     setEstimatedBudget("");
+    setWebsite("");
     onClose();
   }
 
@@ -119,6 +122,16 @@ export default function B2BInquiryModal({ isOpen, freelancer, onClose }: Props) 
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4 text-sm">
+          <input
+            type="text"
+            name="website"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            className="absolute -left-[9999px] h-0 w-0 opacity-0 bg-white text-stone-900 placeholder-stone-400"
+          />
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-stone-700 uppercase mb-1">

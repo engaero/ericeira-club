@@ -1,18 +1,22 @@
 "use client";
 
-import { useEffect } from "react";
-import { X, Users, Clock, ExternalLink, Sparkles, CreditCard, MapPin } from "lucide-react";
+import { useEffect, useState } from "react";
+import Image from "next/image";
+import { X, Users, Clock, Sparkles, CreditCard, MapPin, AlertTriangle, ShieldCheck } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { CATEGORY_COVERS, CATEGORY_LABELS_MAP } from "@/lib/categories";
+import { suggestedCreditsForPrice } from "@/lib/pricing";
+import type { EventRow } from "@/types/db";
 
 interface Props {
-  event: any | null;
+  event: EventRow | any | null;
   isOpen: boolean;
   onClose: () => void;
-  onBookWithCredits: (event: any) => void;
-  onBuySingleTicket: (event: any) => void;
+  onBookWithCredits: (eventOrId: any) => Promise<void> | void;
+  onBuySingleTicket: (eventOrId: any, priceEur?: number, eventTitle?: string) => Promise<void> | void;
 }
 
-function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+function InstagramIcon({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
@@ -22,19 +26,6 @@ function InstagramIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
   );
 }
 
-const CATEGORY_IMAGES: Record<string, string> = {
-  wellness: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=1200&q=80",
-  surf: "https://images.unsplash.com/photo-1502680390469-be75c86b636f?auto=format&fit=crop&w=1200&q=80",
-  breathwork: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=1200&q=80",
-  yoga: "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&fit=crop&w=1200&q=80",
-  crafts: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=1200&q=80",
-  ceramics: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=1200&q=80",
-  wine: "https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?auto=format&fit=crop&w=1200&q=80",
-  coffee: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80",
-  ple: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
-  social: "https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=80"
-};
-
 export default function EventDetailModal({
   event,
   isOpen,
@@ -43,6 +34,8 @@ export default function EventDetailModal({
   onBuySingleTicket,
 }: Props) {
   const { lang } = useLanguage();
+  const [healthAgreed, setHealthAgreed] = useState(false);
+  const [warningMsg, setWarningMsg] = useState<string | null>(null);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -50,148 +43,169 @@ export default function EventDetailModal({
     }
     if (isOpen) {
       window.addEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "hidden";
+      setHealthAgreed(false);
+      setWarningMsg(null);
     }
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "unset";
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen || !event) return null;
 
-  const spotsLeft = event.max_spots - event.booked_spots;
-  const isSoldOut = spotsLeft <= 0;
-  const eventDate = new Date(event.start_time);
+  const rawTitle = lang === "pt" ? event.title_pt || event.title_en : event.title_en || event.title_pt;
+  const title: string = rawTitle || (lang === "pt" ? "Sessão" : "Session");
 
-  const locale = lang === "pt" ? "pt-PT" : "en-US";
-  const dateStr = eventDate.toLocaleDateString(locale, {
+  const rawDescription =
+    lang === "pt"
+      ? event.description_pt || event.description_en
+      : event.description_en || event.description_pt;
+  const description: string = rawDescription || "";
+
+  const categoryInfo = CATEGORY_LABELS_MAP[event.category] || {
+    pt: event.category,
+    en: event.category,
+    emoji: "🌊",
+  };
+
+  const coverImage =
+    event.image_url ||
+    CATEGORY_COVERS[event.category] ||
+    "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80";
+
+  const dateObj = new Date(event.start_time);
+  const formattedDate = dateObj.toLocaleDateString(lang === "pt" ? "pt-PT" : "en-US", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
-  const timeStr = eventDate.toLocaleTimeString(locale, {
+  const formattedTime = dateObj.toLocaleTimeString(lang === "pt" ? "pt-PT" : "en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
 
-  const titleDisplay = lang === "pt" ? (event.title_pt || event.title_en) : (event.title_en || event.title_pt);
-  const descDisplay = lang === "pt"
-    ? (event.description_pt || event.description_en || "Experiência orientada na Ericeira.")
-    : (event.description_en || event.description_pt || "Guided session in Ericeira.");
+  const spotsLeft = Math.max(0, Number(event.max_spots) - Number(event.booked_spots || 0));
+  const isSoldOut = spotsLeft <= 0;
 
-  const coverImage = CATEGORY_IMAGES[event.category] || CATEGORY_IMAGES.wellness;
-  const isCreditsAllowed = (event.pricing_model ?? "credits_allowed") === "credits_allowed";
-  const creditsNeeded = event.credits_cost || Math.round(event.price_eur / 5);
+  const isDirectOnly = event.pricing_model === "direct_only";
+  const creditsCost = event.credits_cost || suggestedCreditsForPrice(Number(event.price_eur));
 
   const provider = event.providers;
-  const hostBio = lang === "pt"
-    ? (provider?.bio_pt || provider?.bio_en)
-    : (provider?.bio_en || provider?.bio_pt);
+  const hostBio = lang === "pt" ? provider?.bio_pt || provider?.bio_en : provider?.bio_en || provider?.bio_pt;
+
+  function validateHealth(): boolean {
+    if (!healthAgreed) {
+      setWarningMsg(
+        lang === "pt"
+          ? "Por favor confirma a declaração de saúde e termos de responsabilidade antes de continuar."
+          : "Please accept the health declaration and liability terms before proceeding."
+      );
+      return false;
+    }
+    setWarningMsg(null);
+    return true;
+  }
+
+  function handleCreditsClick() {
+    if (!validateHealth()) return;
+    onBookWithCredits(event.id || event);
+  }
+
+  function handleTicketClick() {
+    if (!validateHealth()) return;
+    onBuySingleTicket(event.id || event, Number(event.price_eur), title);
+  }
 
   return (
     <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200"
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-sm px-4 py-8 sm:py-12 overflow-y-auto font-sans"
     >
       <div
+        className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-stone-200 my-6 relative flex flex-col max-h-[92vh]"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-[32px] max-w-2xl w-full shadow-2xl relative border border-stone-200 overflow-hidden my-auto"
       >
-        {/* BOTÃO FECHAR */}
         <button
           onClick={onClose}
-          aria-label="Fechar janela"
-          className="absolute top-5 right-5 z-30 w-10 h-10 rounded-full bg-white text-stone-900 shadow-xl border border-stone-200/90 flex items-center justify-center transition hover:bg-stone-100 hover:scale-105 cursor-pointer"
+          className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md transition cursor-pointer shadow-md"
         >
-          <X className="w-5 h-5 stroke-[2.5]" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* CABEÇALHO */}
-        <div className="relative h-60 sm:h-64 w-full bg-stone-900">
-          <img
+        <div className="relative h-56 sm:h-64 w-full shrink-0 bg-stone-900">
+          <Image
             src={coverImage}
-            alt={titleDisplay}
-            className="w-full h-full object-cover"
+            alt={title}
+            fill
+            className="object-cover"
+            priority
+            sizes="(max-width: 768px) 100vw, 700px"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-stone-950/85 via-stone-950/30 to-transparent" />
 
-          <div className="absolute top-5 left-5 flex gap-2">
-            <span className="px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider bg-white/95 text-stone-900 backdrop-blur-md shadow-xs">
-              {event.category}
+          <div className="absolute top-4 left-4 flex items-center gap-2">
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-white/95 text-stone-900 backdrop-blur-md shadow-sm">
+              {categoryInfo.emoji || "✨"} {lang === "pt" ? categoryInfo.pt : categoryInfo.en}
             </span>
-            <span className="px-3 py-1 rounded-full text-xs font-bold bg-black/60 text-stone-200 backdrop-blur-md">
-              {event.level || "Todos os níveis"}
-            </span>
-            {!isCreditsAllowed && (
-              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/90 text-stone-950 backdrop-blur-md">
-                Workshop Especial
+            {isDirectOnly ? (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-400 text-stone-950 shadow-sm">
+                {lang === "pt" ? "Workshop Exclusivo €" : "Special Workshop €"}
+              </span>
+            ) : (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-teal-500 text-white shadow-sm flex items-center gap-1">
+                <Sparkles className="w-3 h-3" />
+                {lang === "pt" ? "Aceita Créditos" : "Credits Accepted"}
               </span>
             )}
           </div>
 
-          <div className="absolute bottom-4 left-6 right-6 text-white space-y-1">
-            <span className="text-xs font-semibold text-amber-300 block capitalize">
-              🗓️ {dateStr} às {timeStr} ({event.duration_minutes} min)
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-tight">
-              {titleDisplay}
-            </h2>
+          <div className="absolute bottom-4 left-4 right-4 text-white">
+            <h3 className="text-xl sm:text-2xl font-black leading-tight drop-shadow-sm">
+              {title}
+            </h3>
+            <div className="flex flex-wrap items-center gap-3 text-xs text-stone-200 mt-2 font-medium">
+              <span className="capitalize">{formattedDate}</span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <Clock className="w-3.5 h-3.5 text-stone-300" />
+                {formattedTime} ({event.duration_minutes} min)
+              </span>
+              <span>•</span>
+              <span className="flex items-center gap-1">
+                <MapPin className="w-3.5 h-3.5 text-orange-400" />
+                {event.location_name || "Ericeira"}
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* CORPO DO MODAL */}
-        <div className="p-6 sm:p-8 space-y-6 max-h-[calc(85vh-240px)] overflow-y-auto">
-          {/* Métricas */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-[#FAF8F5] rounded-2xl border border-stone-200/70 text-xs">
-            <div>
-              <span className="text-stone-400 block font-semibold uppercase text-[10px]">Vagas</span>
-              <p className="font-extrabold text-stone-900 text-sm mt-0.5 flex items-center gap-1">
-                <Users className="w-4 h-4 text-orange-600" />
-                {isSoldOut ? "Esgotado" : `${spotsLeft} de ${event.max_spots}`}
-              </p>
-            </div>
-
-            <div>
-              <span className="text-stone-400 block font-semibold uppercase text-[10px]">Duração</span>
-              <p className="font-extrabold text-stone-900 text-sm mt-0.5 flex items-center gap-1">
-                <Clock className="w-4 h-4 text-teal-700" />
-                {event.duration_minutes} minutos
-              </p>
-            </div>
-
-            <div className="col-span-2 sm:col-span-1">
-              <span className="text-stone-400 block font-semibold uppercase text-[10px]">Formato</span>
-              <p className="font-extrabold text-stone-900 text-sm mt-0.5 flex items-center gap-1">
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                {isCreditsAllowed ? "Aula Regular" : "Bilhete Direto"}
-              </p>
-            </div>
-          </div>
-
-          {/* Descrição */}
+        <div className="p-6 sm:p-7 overflow-y-auto space-y-6 flex-1 text-stone-800">
           <div className="space-y-2">
             <h4 className="text-xs font-bold uppercase tracking-wider text-stone-400">
-              {lang === "pt" ? "Sobre esta sessão" : "About this session"}
+              {lang === "pt" ? "Sobre a Sessão" : "About this Session"}
             </h4>
-            <p className="text-stone-700 text-sm leading-relaxed">
-              {descDisplay}
+            <p className="text-sm text-stone-600 leading-relaxed whitespace-pre-line">
+              {description || (lang === "pt" ? "Sem descrição detalhada disponível." : "No detailed description provided.")}
             </p>
           </div>
 
-          {/* O que levar */}
           {event.what_to_bring && (
-            <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/60 space-y-1">
-              <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
-                🎒 {lang === "pt" ? "O que deves levar / Vestuário" : "What to bring"}
-              </h4>
-              <p className="text-xs text-amber-950/80 leading-relaxed">
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-1">
+              <h5 className="text-xs font-extrabold text-amber-900 uppercase tracking-wider">
+                🎒 {lang === "pt" ? "O que deves trazer" : "What to bring"}
+              </h5>
+              <p className="text-xs text-amber-800 leading-relaxed">
                 {event.what_to_bring}
               </p>
             </div>
           )}
 
-          {/* Instrutor / Anfitrião */}
-          <div className="p-5 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
+          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200/80 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                {lang === "pt" ? "Conhece o teu Instrutor / Anfitrião" : "Meet your Host"}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-stone-400">
+                {lang === "pt" ? "Anfitrião da Experiência" : "Session Host"}
               </span>
               {provider?.instagram_handle && (
                 <a
@@ -210,7 +224,7 @@ export default function EventDetailModal({
               {provider?.avatar_url ? (
                 <img
                   src={provider.avatar_url}
-                  alt={provider.name}
+                  alt={provider.name || "Host"}
                   className="w-12 h-12 rounded-full object-cover border border-stone-300 shrink-0"
                 />
               ) : (
@@ -221,7 +235,7 @@ export default function EventDetailModal({
 
               <div className="space-y-1">
                 <h5 className="font-extrabold text-sm text-stone-900 leading-tight">
-                  {provider?.name}
+                  {provider?.name || (lang === "pt" ? "Instrutor Comunitário" : "Community Host")}
                 </h5>
                 <p className="text-xs text-stone-600 leading-relaxed">
                   {hostBio || (lang === "pt" ? "Profissional local verificado na Ericeira." : "Verified local host in Ericeira.")}
@@ -230,81 +244,125 @@ export default function EventDetailModal({
             </div>
           </div>
 
-          {/* Ponto de encontro */}
-          <div className="space-y-1 pt-1 border-t border-stone-100">
-            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-              {lang === "pt" ? "Ponto de Encontro" : "Meeting Point"}
-            </span>
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-extrabold text-stone-900 flex items-center gap-1">
-                <MapPin className="w-4 h-4 text-orange-600 shrink-0" />
-                {event.location_name}
-              </p>
-              <a
-                href={
-                  event.google_maps_url ||
-                  `https://maps.google.com/?q=${encodeURIComponent(
-                    event.location_name + ", Ericeira"
-                  )}`
-                }
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs font-bold text-stone-900 hover:text-orange-600 underline"
-              >
-                Google Maps
-                <ExternalLink className="w-3 h-3" />
-              </a>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="p-3.5 rounded-xl border border-stone-200 flex items-center gap-2.5">
+              <Users className="w-4 h-4 text-stone-500 shrink-0" />
+              <div>
+                <span className="block text-stone-400 text-[10px] uppercase font-bold">
+                  {lang === "pt" ? "Disponibilidade" : "Availability"}
+                </span>
+                <span className="font-extrabold text-stone-900">
+                  {isSoldOut
+                    ? (lang === "pt" ? "Esgotado" : "Sold out")
+                    : `${spotsLeft} ${lang === "pt" ? "vagas livres" : "spots left"}`}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl border border-stone-200 flex items-center gap-2.5">
+              <MapPin className="w-4 h-4 text-orange-600 shrink-0" />
+              <div className="truncate">
+                <span className="block text-stone-400 text-[10px] uppercase font-bold">
+                  {lang === "pt" ? "Local" : "Location"}
+                </span>
+                <span className="font-extrabold text-stone-900 truncate block">
+                  {event.location_name || "Ericeira"}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* RODAPÉ DE AÇÃO & RESERVA */}
-          <div className="pt-6 border-t border-stone-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-stone-900">{event.price_eur}€</span>
-                {isCreditsAllowed && (
-                  <span className="text-xs text-stone-400 font-medium">
-                    {lang === "pt" ? "ou" : "or"} <strong className="text-stone-900">{creditsNeeded} {lang === "pt" ? "créditos" : "credits"}</strong>
-                  </span>
-                )}
-              </div>
-              <span className="text-[10px] text-stone-400 block pt-0.5">
-                {isCreditsAllowed
-                  ? (lang === "pt" ? "Cancelamento gratuito até 12 horas antes" : "Free cancellation up to 12h prior")
-                  : (lang === "pt" ? "Bilhete individual (MB WAY, Cartão ou PayPal)" : "Direct ticket (MB WAY, Card or PayPal)")}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                disabled={isSoldOut}
-                onClick={() => {
-                  onBuySingleTicket(event);
-                  onClose();
+          {/* TERMO DE RESPONSABILIDADE E APTIDÃO DE SAÚDE */}
+          <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2">
+            <div className="flex items-start gap-2.5">
+              <input
+                id="health-agreement"
+                type="checkbox"
+                checked={healthAgreed}
+                onChange={(e) => {
+                  setHealthAgreed(e.target.checked);
+                  if (e.target.checked) setWarningMsg(null);
                 }}
-                className={`flex-1 sm:flex-none px-5 py-3 rounded-full text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-xs disabled:opacity-40 ${
-                  !isCreditsAllowed
-                    ? "bg-stone-900 hover:bg-orange-600 text-white shadow-md font-black uppercase tracking-wider"
-                    : "bg-white border border-stone-300 hover:border-stone-900 text-stone-800"
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                {lang === "pt" ? `Pagar ${event.price_eur}€` : `Pay ${event.price_eur}€`}
-              </button>
+                className="mt-0.5 h-4 w-4 rounded border-stone-300 text-stone-900 focus:ring-stone-900 cursor-pointer"
+              />
+              <label htmlFor="health-agreement" className="text-xs text-stone-600 leading-relaxed cursor-pointer select-none">
+                {lang === "pt" ? (
+                  <>
+                    Declaro estar em <strong>condições de saúde e aptidão física</strong> adequadas para a prática desta atividade (especialmente sauna/gelo, respiração ou surf), sem histórico cardiovascular impeditivo, e aceito os{" "}
+                    <a href="/terms" target="_blank" className="underline font-bold text-stone-900">
+                      Termos de Responsabilidade
+                    </a>{" "}
+                    e regras de cancelamento.
+                  </>
+                ) : (
+                  <>
+                    I declare that I am in <strong>adequate physical and health condition</strong> for this activity (particularly sauna/ice, breathwork or surf), with no cardiac contraindications, and accept the{" "}
+                    <a href="/terms" target="_blank" className="underline font-bold text-stone-900">
+                      Liability Terms
+                    </a>{" "}
+                    and cancellation policy.
+                  </>
+                )}
+              </label>
+            </div>
+            {warningMsg && (
+              <div className="text-[11px] font-bold text-red-600 flex items-center gap-1.5 pt-1">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                <span>{warningMsg}</span>
+              </div>
+            )}
+          </div>
+        </div>
 
-              {isCreditsAllowed && (
-                <button
-                  disabled={isSoldOut}
-                  onClick={() => {
-                    onBookWithCredits(event);
-                    onClose();
-                  }}
-                  className="flex-1 sm:flex-none px-6 py-3 rounded-full bg-stone-900 hover:bg-orange-600 text-white text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md disabled:bg-stone-200 disabled:text-stone-400"
-                >
-                  {isSoldOut ? "Esgotado" : (lang === "pt" ? `Usar ${creditsNeeded} Créd.` : `Use ${creditsNeeded} Cred.`)}
-                </button>
+        <div className="p-4 sm:p-5 border-t border-stone-200 bg-[#FAF9F6] flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-black text-stone-900">{event.price_eur}€</span>
+              {!isDirectOnly && (
+                <span className="text-xs font-bold text-stone-500">
+                  {lang === "pt" ? `ou ${creditsCost} créditos` : `or ${creditsCost} credits`}
+                </span>
               )}
             </div>
+            <span className="text-[11px] text-stone-400 block">
+              {lang === "pt" ? "Cancelamento gratuito até 12h antes" : "Free cancellation up to 12h prior"}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {!isDirectOnly && (
+              <button
+                disabled={isSoldOut}
+                onClick={handleCreditsClick}
+                className="flex-1 sm:flex-initial px-4 py-3 rounded-2xl bg-teal-800 hover:bg-teal-700 disabled:bg-stone-300 text-white font-extrabold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>
+                  {isSoldOut
+                    ? (lang === "pt" ? "Esgotado" : "Sold Out")
+                    : (lang === "pt" ? `Reservar (${creditsCost} cr.)` : `Book (${creditsCost} cr.)`)}
+                </span>
+              </button>
+            )}
+
+            <button
+              disabled={isSoldOut}
+              onClick={handleTicketClick}
+              className={`flex-1 sm:flex-initial px-4 py-3 rounded-2xl font-extrabold text-xs uppercase tracking-wider transition shadow-sm cursor-pointer disabled:cursor-not-allowed flex items-center justify-center gap-1.5 ${
+                isDirectOnly
+                  ? "bg-stone-900 hover:bg-orange-600 disabled:bg-stone-300 text-white"
+                  : "bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-800"
+              }`}
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>
+                {isSoldOut
+                  ? (lang === "pt" ? "Esgotado" : "Sold Out")
+                  : isDirectOnly
+                  ? (lang === "pt" ? `Comprar Bilhete (${event.price_eur}€)` : `Buy Ticket (${event.price_eur}€)`)
+                  : (lang === "pt" ? `Pagar ${event.price_eur}€` : `Pay ${event.price_eur}€`)}
+              </span>
+            </button>
           </div>
         </div>
       </div>
