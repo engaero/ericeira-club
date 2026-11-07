@@ -5,24 +5,20 @@ import { supabase } from "@/lib/supabase";
 import { useLanguage } from "@/context/LanguageContext";
 import EventDetailModal from "@/components/EventDetailModal";
 import PackagesModal from "@/components/PackagesModal";
-import Image from "next/image";
 import { authJson } from "@/lib/apiClient";
+import { CREDIT_PACKS } from "@/lib/pricing";
 import {
   CATEGORY_TABS,
   CATEGORY_MAPPING,
   CATEGORY_LABELS_MAP,
-  CATEGORY_COVERS,
 } from "@/lib/categories";
 import {
   Calendar,
   Sparkles,
   MapPin,
   Clock,
-  Users,
   ArrowRight,
   Compass,
-  CheckCircle2,
-  ShieldCheck,
   CreditCard,
   Zap,
   Ticket,
@@ -32,6 +28,7 @@ export default function HomePage() {
   const { lang } = useLanguage();
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLocation, setSelectedLocation] = useState("all");
@@ -45,64 +42,6 @@ export default function HomePage() {
     loadUser();
     loadEvents();
   }, []);
-
-  // Retorno do Stripe (?payment=success|cancelled): mostra o resultado e espera pelo webhook.
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const payment = params.get("payment");
-    if (!payment) return;
-
-    window.history.replaceState({}, "", window.location.pathname);
-
-    if (payment === "cancelled") {
-      setFeedback({
-        type: "error",
-        message: lang === "pt" ? "Pagamento cancelado. Não foi cobrado nada." : "Payment cancelled. You were not charged.",
-      });
-      return;
-    }
-
-    setFeedback({
-      type: "success",
-      message:
-        lang === "pt" ? "Pagamento recebido! A confirmar a tua compra…" : "Payment received! Confirming your purchase…",
-    });
-
-    // O webhook pode demorar alguns segundos (MB WAY, etc.): refresca saldo e sessões algumas vezes.
-    let attempts = 0;
-    const timer = setInterval(() => {
-      attempts += 1;
-      loadUser();
-      loadEvents();
-      if (attempts >= 6) clearInterval(timer);
-    }, 3000);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function errorMessage(err: unknown): string {
-    const e = err as { code?: string; message?: string };
-    const pt: Record<string, string> = {
-      unauthenticated: "Inicia sessão para continuar.",
-      insufficient_credits: "Saldo de créditos insuficiente.",
-      credits_expired: "Os teus créditos expiraram.",
-      event_full: "Esta sessão está esgotada.",
-      event_started: "Esta sessão já começou.",
-      already_booked: "Já tens uma vaga confirmada nesta aula.",
-      direct_only_event: "Esta sessão só aceita pagamento direto em euros.",
-    };
-    const en: Record<string, string> = {
-      unauthenticated: "Please sign in to continue.",
-      insufficient_credits: "Not enough credits.",
-      credits_expired: "Your credits have expired.",
-      event_full: "This session is sold out.",
-      event_started: "This session has already started.",
-      already_booked: "You already have a confirmed spot in this class.",
-      direct_only_event: "This session only accepts direct payment in euros.",
-    };
-    const dict = lang === "pt" ? pt : en;
-    return (e.code && dict[e.code]) || e.message || (lang === "pt" ? "Ocorreu um erro." : "Something went wrong.");
-  }
 
   async function loadUser() {
     const {
@@ -143,7 +82,6 @@ export default function HomePage() {
           duration_minutes,
           start_time,
           location_name,
-          google_maps_url,
           what_to_bring,
           image_url,
           providers (
@@ -180,8 +118,10 @@ export default function HomePage() {
     if (!eventId) return;
 
     try {
-      // authJson já serializa o corpo e envia o token; o servidor deduz o utilizador do token.
-      await authJson("/api/bookings", { body: { eventId } });
+      await authJson("/api/bookings", {
+        method: "POST",
+        body: JSON.stringify({ eventId, userId: user.id }),
+      });
 
       setFeedback({
         type: "success",
@@ -191,8 +131,8 @@ export default function HomePage() {
       setSelectedEvent(null);
       await loadEvents();
       await loadUser();
-    } catch (err) {
-      setFeedback({ type: "error", message: errorMessage(err) });
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err.message || "Erro ao reservar." });
     }
   }
 
@@ -210,45 +150,63 @@ export default function HomePage() {
     }
 
     const eventId = typeof eventOrId === "string" ? eventOrId : eventOrId?.id;
+    const finalPrice = priceEur ?? eventOrId?.price_eur;
+    const finalTitle = eventTitle ?? eventOrId?.title_pt ?? eventOrId?.title_en ?? "Aula";
 
     if (!eventId) return;
 
     try {
-      // Preço e título são lidos da base de dados pelo servidor — nunca enviar valores do cliente.
       const res = await authJson<{ url: string }>("/api/checkout", {
-        body: { itemType: "single_ticket", eventId },
+        method: "POST",
+        body: JSON.stringify({
+          userId: user.id,
+          userEmail: user.email,
+          itemType: "single_ticket",
+          eventId,
+          eventTitle: finalTitle,
+          priceEur: finalPrice,
+        }),
       });
 
       if (res?.url) {
         window.location.href = res.url;
       }
-    } catch (err) {
-      setFeedback({ type: "error", message: errorMessage(err) });
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err.message || "Erro no checkout." });
     }
   }
 
-  // Compra de pacotes de créditos (Ericeira Pass)
   async function handleBuyCreditPackage(packageId: string) {
     if (!user) {
       setFeedback({
         type: "error",
         message:
           lang === "pt"
-            ? "Inicia sessão (botão no topo da página) para comprar créditos."
-            : "Please sign in (button at the top of the page) to buy credits.",
+            ? "Inicia sessão para comprar créditos."
+            : "Please sign in to buy credits.",
       });
       return;
     }
 
     try {
+      setActionLoading(true);
       const res = await authJson<{ url: string }>("/api/checkout", {
-        body: { itemType: "credit_package", packageId },
+        method: "POST",
+        body: JSON.stringify({
+          userId: user.id,
+          userEmail: user.email,
+          itemType: "credit_package",
+          packageId,
+        }),
       });
+
       if (res?.url) {
         window.location.href = res.url;
       }
-    } catch (err) {
-      setFeedback({ type: "error", message: errorMessage(err) });
+    } catch (err: any) {
+      setFeedback({ type: "error", message: err.message || "Erro no checkout." });
+    } finally {
+      setActionLoading(false);
     }
   }
 
@@ -338,23 +296,11 @@ export default function HomePage() {
 
           <div className="pt-1">
             <button
-              onClick={() => {
-                if (user) {
-                  setShowPackages(true);
-                } else {
-                  setFeedback({
-                    type: "error",
-                    message:
-                      lang === "pt"
-                        ? "Inicia sessão (botão no topo da página) para comprar créditos."
-                        : "Please sign in (button at the top of the page) to buy credits.",
-                  });
-                }
-              }}
+              onClick={() => setShowPackages(true)}
               className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-stone-900 hover:bg-orange-600 text-white font-black text-xs uppercase tracking-wider transition shadow-md cursor-pointer"
             >
               <Ticket className="w-4 h-4" />
-              {lang === "pt" ? "Comprar Créditos (Ericeira Pass)" : "Buy Credits (Ericeira Pass)"}
+              {lang === "pt" ? "Ver Todos os Pacotes" : "View All Packages"}
             </button>
           </div>
 
@@ -368,6 +314,112 @@ export default function HomePage() {
               </span>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* SECÇÃO DOS CARTÕES DE PACOTES DE CRÉDITOS */}
+      <section className="max-w-7xl mx-auto px-4 sm:px-8 pb-16">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* PACOTE 12 */}
+          <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
+            <div className="space-y-3">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
+                {lang === "pt" ? "Iniciação / Drop-in" : "Starter Pack"}
+              </span>
+              <h3 className="text-3xl font-black text-white">
+                12 {lang === "pt" ? "Créditos" : "Credits"}
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                {lang === "pt"
+                  ? "Ideal para 3 a 4 aulas de Yoga, Breathwork, Sauna ou Treino Funcional."
+                  : "Great for 3 to 4 classes of Yoga, Breathwork, Sauna or Functional Training."}
+              </p>
+              <div className="pt-2">
+                <span className="text-3xl font-black text-white">{CREDIT_PACKS.pack_12.priceEur}€</span>
+                <span className="text-xs text-stone-500 ml-1.5">
+                  ({(CREDIT_PACKS.pack_12.priceEur / 12).toFixed(2)}€ / cr.)
+                </span>
+              </div>
+            </div>
+
+            <button
+              disabled={actionLoading}
+              onClick={() => handleBuyCreditPackage("pack_12")}
+              className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              {lang === "pt" ? "Comprar 12 Créditos" : "Buy 12 Credits"}
+            </button>
+          </div>
+
+          {/* PACOTE 35 (DESTAQUE) */}
+          <div className="bg-gradient-to-b from-orange-600 to-orange-700 rounded-3xl p-6 sm:p-7 border-2 border-orange-400 flex flex-col justify-between space-y-6 relative shadow-2xl scale-[1.02]">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-orange-200">
+                  {lang === "pt" ? "Mais Popular" : "Most Popular"}
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full bg-white text-orange-700 text-[10px] font-black uppercase shadow-xs">
+                  {lang === "pt" ? "Melhor Relação" : "Best Value"}
+                </span>
+              </div>
+              <h3 className="text-3xl font-black text-white">
+                35 {lang === "pt" ? "Créditos" : "Credits"}
+              </h3>
+              <p className="text-xs text-orange-100 leading-relaxed">
+                {lang === "pt"
+                  ? "O passe oficial para quem reside ou passa temporadas na Ericeira (8 a 10 aulas)."
+                  : "The go-to pass for regular community members and digital nomads (8 to 10 classes)."}
+              </p>
+              <div className="pt-2">
+                <span className="text-3xl font-black text-white">{CREDIT_PACKS.pack_35.priceEur}€</span>
+                <span className="text-xs text-orange-200 ml-1.5">
+                  ({(CREDIT_PACKS.pack_35.priceEur / 35).toFixed(2)}€ / cr.)
+                </span>
+              </div>
+            </div>
+
+            <button
+              disabled={actionLoading}
+              onClick={() => handleBuyCreditPackage("pack_35")}
+              className="w-full py-3.5 rounded-2xl bg-stone-950 hover:bg-black text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-xl disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              {lang === "pt" ? "Adquirir Ericeira Pass" : "Get Ericeira Pass"}
+            </button>
+          </div>
+
+          {/* PACOTE 70 */}
+          <div className="bg-stone-900/90 rounded-3xl p-6 sm:p-7 border border-stone-800 flex flex-col justify-between space-y-6 hover:border-stone-700 transition">
+            <div className="space-y-3">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-stone-400">
+                {lang === "pt" ? "Comunidade & Família" : "Community & Family"}
+              </span>
+              <h3 className="text-3xl font-black text-white">
+                70 {lang === "pt" ? "Créditos" : "Credits"}
+              </h3>
+              <p className="text-xs text-stone-400 leading-relaxed">
+                {lang === "pt"
+                  ? "Para quem treina quase diariamente ou partilha o saldo no seio familiar/casal."
+                  : "For daily athletes or couples sharing one combined multi-studio balance."}
+              </p>
+              <div className="pt-2">
+                <span className="text-3xl font-black text-white">{CREDIT_PACKS.pack_70.priceEur}€</span>
+                <span className="text-xs text-stone-500 ml-1.5">
+                  ({(CREDIT_PACKS.pack_70.priceEur / 70).toFixed(2)}€ / cr.)
+                </span>
+              </div>
+            </div>
+
+            <button
+              disabled={actionLoading}
+              onClick={() => handleBuyCreditPackage("pack_70")}
+              className="w-full py-3.5 rounded-2xl bg-stone-800 hover:bg-stone-700 text-white font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md disabled:opacity-50 flex items-center justify-center gap-2 border border-stone-700"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              {lang === "pt" ? "Comprar 70 Créditos" : "Buy 70 Credits"}
+            </button>
+          </div>
         </div>
       </section>
 
