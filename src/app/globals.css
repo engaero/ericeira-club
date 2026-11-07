@@ -1,22 +1,12 @@
 @import "tailwindcss";
 
-/* Paleta quente do Ericeira Hub. A app é desenhada só para tema claro:
-   o bloco prefers-color-scheme:dark foi removido porque deixava o texto quase branco
-   sobre fundos claros fixos (#FDFBF7, bg-white). */
 :root {
   --background: #fdfbf7;
-  --foreground: #1c1917; /* stone-900 */
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --foreground: #1c1917;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
 }
